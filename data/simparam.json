@@ -1,0 +1,27 @@
+{
+    "selection_mode": "weak",
+    "num_generations": 1000,
+    "pop_size": 100,
+    "beta": 1,
+    "iseq1": null,
+    "seq1_init": "random",
+    "seq1_type": "protein",
+    "seq1_len": 24,
+    "seq1_len_constr": 999,
+    "seq1_evol": true,
+    "iseq2": null,
+    "seq2_init": null,
+    "seq2_type": null,
+    "seq2_len": null,
+    "seq2_len_constr": 999,
+    "seq2_evol": null,
+    "ligand": null,
+    "outpath": "ames_output/output",
+    "log": "progress.log",
+    "max_seq_per_batch": null,
+    "evoldict": null,
+    "norepeat": false,
+    "nobackup": false
+}
+
+
