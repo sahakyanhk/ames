@@ -8,7 +8,7 @@ psique_binary_path = "https://github.com/franciscoadasme/psique/releases/latest/
 # Get the directory of THIS module file
 module_dir = Path(__file__).parent.resolve()
 bin_path = module_dir.parent / 'bin' 
-psique_path = bin_path.parent / 'psique'
+psique_path = module_dir.parent / 'bin' / 'psique'
 
 if psique_path.exists():
     os.chmod(psique_path, 0o755)
