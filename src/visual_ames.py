@@ -2,7 +2,7 @@ import argparse
 import os, re
 import pandas as pd
 import numpy as np
-import shutil
+import json
 import ast
 import gzip
 from tqdm import tqdm
@@ -71,7 +71,7 @@ def extract_lineage(log):
         'plddt',
         'score'
         ]].iloc[-1]}
-{ltail.sequence_data.iloc[-1]}
+{json.dumps(ast.literal_eval(ltail.sequence_data.iloc[-1]), indent=4)}
 """)
     return lineage
 
@@ -251,5 +251,5 @@ if args.noplots:
     print("#=== extracting structures")
     extract_structures(lineage, outdir)
 
-print('#================================================#')
+print('#================================================#\n')
 

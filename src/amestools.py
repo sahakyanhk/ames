@@ -40,6 +40,7 @@ def parse_args():
     parser.add_argument('-bt', '--beta_target', type=float, help='')
     parser.add_argument('-ann_s', '--annealing_start', type=int, help='generation when annealing starts')
     parser.add_argument('-ann_e','--annealing_end', type=int, help='generation when annealing reaches target beta')
+    parser.add_argument('-ann_step','--annealing_step', type=int, help='annealing step')
     #seq1 setup
     parser.add_argument('--iseq1', type=str, help='a sequence info to initiate with "protein:random:25:evolves"')
     parser.add_argument('--seq1_init', type=str, help='a sequence to initiate with [random, randoms, or sequence]')
@@ -60,6 +61,10 @@ def parse_args():
     parser.add_argument('-o','--outpath', type=str, help='output filepath for saving sampled sequences')
     parser.add_argument('-l', '--log', type=str, help='log output')   
     parser.add_argument('--nobackup', action='store_true', help='overwrite files if exists')
+    #contact calculatsion
+    parser.add_argument('--contact_min_seq_dist', type=int, help='annealing step')
+    parser.add_argument('--contact_cutoff', type=float, help='annealing step')
+    parser.add_argument('--contact_min_plddt', type=float, help='annealing step')
     #other
     parser.add_argument('--norepeat', action='store_true', help='do not generate and/or select the same sequences more than once')
     parser.add_argument('--max_seq_per_batch', type=int, help='max_seq_per_batch, by defaulf it is half or population size')
@@ -122,18 +127,29 @@ def parse_args():
     if args.max_seq_per_batch is None:
         args.max_seq_per_batch = args.pop_size // 2
     
-    #annealing setup
     args.beta = np.clip(args.beta, 0, 709)
-    args.beta_target = np.clip(args.beta_target, 0, 709)
+    #annealing setup
     
     if args.annealing: 
+
+        if args.beta_target is None:
+            print("a target beta must be provided for temperature annealing")
+            sys.exit(1)
+        else:
+            args.beta_target = np.clip(args.beta_target, 0, 709)
+
         if args.annealing_start is None:
             args.annealing_start = int(args.num_generations * 0.2)
+            print(f"WARNING: annealing_start is not provided Annealing will start generation {args.annealing_start} by default")
     
         if args.annealing_end is None:
             args.annealing_end = int(args.num_generations * 0.8)
-            
-        args.delta_b = (args.beta_target - args.beta) / (args.annealing_end - args.annealing_start) #linearly increas beta from ann_start to ann_end
+            print(f"WARNING: annealing_end is not provided Annealing will end generation {args.annealing_end} by default")
+        
+        if args.annealing_step is None:
+            args.annealing_step = round((args.beta_target - args.beta) / (args.annealing_end - args.annealing_start), 3) #linearly increas beta from ann_start to ann_end
+        
+
 
     # determine evoltion type from input params
     if args.seq1_type == 'protein' and args.seq2_type is None:
@@ -182,7 +198,7 @@ def sigmoid(x:float|int, L0=0.0, c=0.1) -> float:
     return 1 / (1 + np.exp(z))
 
 def update_beta(args):
-    args.beta += args.delta_b
+    args.beta += args.annealing_step
 
 
 def gc_content(seq:str) -> float:
@@ -310,7 +326,7 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
             "seq1": {
                 "type": args.seq1_type, 
                 "sequence": randomsequence1,
-                "ss": "SS", 
+                "ss": "SECONDARYSTRUCTURES", 
                 "len": args.seq1_len,
                 "evolve": args.seq1_evol,
             }
@@ -327,7 +343,7 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
             "seq1": {
                 "type": args.seq1_type, 
                 "sequence": evolver.randomseq(args.seq1_type, args.seq1_len), 
-                "ss": 'SS',
+                "ss": "SECONDARYSTRUCTURES",
                 "len": args.seq1_len,
                 "evolve": args.seq1_evol,
             }
@@ -339,7 +355,7 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
                 "type": args.seq1_type,
                 "sequence": args.seq1_init,
                 "len": args.seq1_len,
-                "ss": 'SS',
+                "ss": "SECONDARYSTRUCTURES",
                 "evolve": args.seq1_evol,
             }
         } for _ in range(args.pop_size)]
@@ -357,7 +373,7 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
                 seq_data[i]["seq2"] = {
                     "type": args.seq2_type, 
                     "sequence": randomsequence2, 
-                    "ss": 'SS',
+                    "ss": "SECONDARYSTRUCTURES",
                     "len": args.seq2_len,
                     "evolve": args.seq2_evol,
                 }
@@ -368,7 +384,7 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
                 seq_data[i]["seq2"] = {
                     "type": args.seq2_type, 
                     "sequence": randomsequence2, 
-                    "ss": 'SS',
+                    "ss": "SECONDARYSTRUCTURES",
                     "len": args.seq2_len,
                     "evolve": args.seq2_evol,
                 }
@@ -378,7 +394,7 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
                 seq_data[i]["seq2"] = {
                     "type": args.seq2_type,
                     "sequence": args.seq2_init,
-                    "ss": 'SS',
+                    "ss": "SECONDARYSTRUCTURES",
                     "len": args.seq2_init,
                     "evolve": args.seq2_evol,
                 }

@@ -44,7 +44,7 @@ def fold_evolution_simulator(args, evolver) -> None:
     time_now = now.strftime("%H:%M:%S")
 
 
-    param_lines = [f"# --{param:<18} = {value}\n" for param, value in vars(args).items()]
+    param_lines = [f"# --{param:<24} = {value}\n" for param, value in vars(args).items()]
     
 
 
@@ -87,7 +87,7 @@ def fold_evolution_simulator(args, evolver) -> None:
         mutation_collection = []
         
         # dynamic temperature control for annealing
-        if args.annealing & args.annealing_start < gen_i < args.annealing_end:
+        if args.annealing and args.annealing_start <= gen_i <= args.annealing_end:
             print("#selection temperatura was updated")
             update_beta(args)
 
@@ -232,7 +232,7 @@ def extract_results(gen_i: int,
         else: 
             prot_chain = None
             na_chain = "A"
-            ss = "NASS"
+            ss = "NASECONDARYSTRUCTURES"
 
         if args.seq2_type == 'protein':
             prot_chain = "B"
@@ -242,18 +242,18 @@ def extract_results(gen_i: int,
         else: 
             prot_chain = None
             na_chain = "B"
-            ss = "NASS"
-        
+            ss = "NASECONDARYSTRUCTURES"
 
-        min_plddt = 60
-        min_seq_dist=4 #min_seq_dist=4 counts ~1 contact for each aa in a helix,
-                        #min_seq_dist=5 will not count contacts in helices
-                                                                                    
+
         if prot_chain in ["A", "B"]:
             contact_density = pdb_contacts.contact_density(structure, 
-                                                        chain=prot_chain, 
-                                                        min_plddt=min_plddt, 
-                                                        min_seq_dist=min_seq_dist) 
+                                                           cutoff=args.contact_cutoff,
+                                                           chain=prot_chain, 
+                                                           min_plddt=args.contact_min_plddt, 
+                                                           min_seq_dist=args.contact_min_seq_dist) 
+                                    # for a 30aa polyA helix: min_seq_dist=3 => 51 contacts, 
+                                    #                                      4 => 25 
+                                    #                                      5 => 0  
         else: 
             contact_density = 0.0
 
@@ -264,11 +264,10 @@ def extract_results(gen_i: int,
         else: 
             seq2_len_penalty = 1
 
-        # max_alpha_penalty = 1 - sigmoid(max_helix, args.helix_len_penalty, 0.5)
-        # max_beta_penalty = 1 - sigmoid(max_beta, args.beta_len_penalty, 0.6)
 
         penalty = seq1_len_penalty * seq2_len_penalty #* max_alpha_penalty * max_beta_penalty
-
+        
+        # adjusting score for evolution type
         if args.evolution_type == 'PROTEIN_FOLD_EVOLUTION':
             score = (0.4*ptm + 0.2*plddt + 0.4*contact_density) * penalty
 
@@ -283,8 +282,8 @@ def extract_results(gen_i: int,
 
         elif args.evolution_type in ['PROTEIN_COMPLEX_COEVOLUTION', 'PROTEIN_COMPLEX_EVOLUTION']:
             
-            chainA_density = pdb_contacts.contact_density(structure, chain="A", min_plddt=min_plddt, min_seq_dist=min_seq_dist)
-            chainB_density = pdb_contacts.contact_density(structure, chain="B", min_plddt=min_plddt, min_seq_dist=min_seq_dist)
+            chainA_density = pdb_contacts.contact_density(structure, chain="A", min_plddt=args.contact_min_plddt, min_seq_dist=args.contact_min_seq_dist)
+            chainB_density = pdb_contacts.contact_density(structure, chain="B", min_plddt=args.contact_min_plddt, min_seq_dist=args.contact_min_seq_dist)
             
             contact_density = (chainA_density + chainB_density) / 2
 
@@ -303,7 +302,7 @@ def extract_results(gen_i: int,
         row_data = {
             'gndx': gen_i,
             'id': uid, 
-            'beta': args.beta,
+            'beta': round(args.beta, 3),
             'plddt': plddt,
             'ptm': ptm, 
             'iptm': iptm,
