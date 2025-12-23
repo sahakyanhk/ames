@@ -27,30 +27,42 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Evolution simulation')
     parser.set_defaults(**defaults)
 
+    #selection mode and simulations parameters
+    parser.add_argument('--config', type=str, default='../data/simparam.json', help='default configs')
     parser.add_argument('-sm', '--selection_mode', type=str, help='selection mode\n options: strong, weak, weak2')
     parser.add_argument('-ed', '--evoldict', type=str, help='a dictionary with parameters for simulation')
-    parser.add_argument('-b', '--beta', type=float, help='selection strength, the higher beta the lower temperature and stronger selection')
+    #pop_size and num generations
+    parser.add_argument('-ng', '--num_generations', type=int, help='number of generations')
+    parser.add_argument('-ps', '--pop_size', type=int, help='population size')
+    #temperature control
+    parser.add_argument('-b0', '--beta', type=float, help='selection strength, the higher beta the lower temperature and stronger selection')
+    parser.add_argument('-ann','--annealing', action='store_true', help='')
+    parser.add_argument('-bt', '--beta_target', type=float, help='')
+    parser.add_argument('-ann_s', '--annealing_start', type=int, help='generation when annealing starts')
+    parser.add_argument('-ann_e','--annealing_end', type=int, help='generation when annealing reaches target beta')
+    #seq1 setup
     parser.add_argument('--iseq1', type=str, help='a sequence info to initiate with "protein:random:25:evolves"')
     parser.add_argument('--seq1_init', type=str, help='a sequence to initiate with [random, randoms, or sequence]')
     parser.add_argument('--seq1_type', type=str, help='a sequence to initiate with, if "random" pop_size random sequences will ')
     parser.add_argument('--seq1_len', type=int, help='seq len')
-    parser.add_argument('--seq1_len_constr', type=int, help='constain seq1 length')
     parser.add_argument('--seq1_evol', help='does this sequence evolve or not [True/false]', action='store_true')
+    #seq2 setup
     parser.add_argument('--iseq2', type=str, help='a sequence info to initiate with "protein:random:25:evolves"')
     parser.add_argument('--seq2_init', type=str, help='the 2nd sequence to initiate with [random, randoms, or sequence]')
     parser.add_argument('--seq2_type', type=str, help='seq type [proten, rna, dna] ')
     parser.add_argument('--seq2_len', type=int, help='seq len')
-    parser.add_argument('--seq2_len_constr', type=int, help='constain seq2 length')
     parser.add_argument('--seq2_evol', help='does this sequence evolve or not [True/false]', action='store_false')
     parser.add_argument('--ligand', help="ligand(s) provided in slmiles of ccd format")
+    #constraints
+    parser.add_argument('--seq1_len_constr', type=int, help='constain seq1 length')
+    parser.add_argument('--seq2_len_constr', type=int, help='constain seq2 length')
+    #outputs
     parser.add_argument('-o','--outpath', type=str, help='output filepath for saving sampled sequences')
     parser.add_argument('-l', '--log', type=str, help='log output')   
-    parser.add_argument('-ng', '--num_generations', type=int, help='number of generations')
-    parser.add_argument('-ps', '--pop_size', type=int, help='population size')
-    parser.add_argument('--max_seq_per_batch', type=int, help='max_seq_per_batch, by defaulf it is half or population size')
-    parser.add_argument('--norepeat', action='store_true', help='do not generate and/or select the same sequences more than once')
     parser.add_argument('--nobackup', action='store_true', help='overwrite files if exists')
-    parser.add_argument('--config', type=str, default='../data/simparam.json', help='default configs')
+    #other
+    parser.add_argument('--norepeat', action='store_true', help='do not generate and/or select the same sequences more than once')
+    parser.add_argument('--max_seq_per_batch', type=int, help='max_seq_per_batch, by defaulf it is half or population size')
 
     if len(sys.argv) == 1:
         parser.print_help()
@@ -109,6 +121,19 @@ def parse_args():
 
     if args.max_seq_per_batch is None:
         args.max_seq_per_batch = args.pop_size // 2
+    
+    #annealing setup
+    args.beta = np.clip(args.beta, 0, 709)
+    args.beta_target = np.clip(args.beta_target, 0, 709)
+    
+    if args.annealing: 
+        if args.annealing_start is None:
+            args.annealing_start = int(args.num_generations * 0.2)
+    
+        if args.annealing_end is None:
+            args.annealing_end = int(args.num_generations * 0.8)
+            
+        args.delta_b = (args.beta_target - args.beta) / (args.annealing_end - args.annealing_start) #linearly increas beta from ann_start to ann_end
 
     # determine evoltion type from input params
     if args.seq1_type == 'protein' and args.seq2_type is None:
@@ -156,6 +181,8 @@ def sigmoid(x:float|int, L0=0.0, c=0.1) -> float:
     z = np.clip(z, -709, 709)  # e^500 is near max float, e^-500 is near 0
     return 1 / (1 + np.exp(z))
 
+def update_beta(args):
+    args.beta += args.delta_b
 
 
 def gc_content(seq:str) -> float:

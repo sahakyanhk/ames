@@ -14,6 +14,7 @@ from psique import pypsique
 
 
 from amestools import (parse_args,
+                       update_beta,
                        gzip_str, 
                        sigmoid,
                        backup_output, 
@@ -84,6 +85,11 @@ def fold_evolution_simulator(args, evolver) -> None:
         threads = []
         generated_sequences = []
         mutation_collection = []
+        
+        # dynamic temperature control for annealing
+        if args.annealing & args.annealing_start < gen_i < args.annealing_end:
+            print("#selection temperatura was updated")
+            update_beta(args)
 
         for prev_id, sequence_data in zip(init_gen.id, init_gen.sequence_data):
             
