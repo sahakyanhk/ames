@@ -14,6 +14,8 @@ from psique import pypsique
 
 
 from amestools import (parse_args,
+                       generate_loghead,
+                       save_checkpoint,
                        update_beta,
                        gzip_str, 
                        sigmoid,
@@ -36,40 +38,21 @@ write_lock = threading.Lock()
 def fold_evolution_simulator(args, evolver) -> None: 
 
     global new_gen #this will be modified in the extract_results() 
-    
+    print(args.ckp)
     logpath = os.path.join(args.outpath, args.log)
+    ckppath = os.path.join(args.outpath, args.ckp)
 
-    now = datetime.now() # current date and time
-    date_now = now.strftime("%d-%b-%Y")
-    time_now = now.strftime("%H:%M:%S")
+    loghead = generate_loghead(args)
 
-
-    param_lines = [f"# --{param:<24} = {value}\n" for param, value in vars(args).items()]
-    
-
-
-    loghead = f'''
-#======================== AMESv0.1 ========================#
-#====================== {date_now} =======================#
-#======================== {time_now} ========================#
-#WD: {os.getcwd()}
-#${' '.join(sys.argv)}
-#
-#======================= input params =====================#
-#
-''' + ''.join(param_lines) + '''
-#
-#==========================================================#
-'''
     print(loghead)
 
-    init_gen = create_init_gen(evolver, args)
 
     with open(logpath, 'w') as f:
         f.write(loghead)
 
     #    f.write('\t'.join(init_gen.keys()) + '\n')
     
+    init_gen = create_init_gen(evolver, args)
     init_gen.to_csv(logpath, mode='a', index=False, header=True, sep='\t')
 
     #ancestral_memory = set() #-> !!! TODO make ancestral memory a set of unique sequences !!! <-# 
@@ -77,9 +60,9 @@ def fold_evolution_simulator(args, evolver) -> None:
     print_genlog(init_gen, args)
     
     #mutate seqs from init_gen and select the best N seqs for the next generation    
-    for gen_i in range(args.num_generations):
-        
-        n = 0
+    for gen_i in range(1, args.num_generations):
+
+        n = 0 # seq n
         new_gen = pd.DataFrame()
         now = datetime.now()
         threads = []
@@ -189,6 +172,8 @@ def fold_evolution_simulator(args, evolver) -> None:
         init_gen.gndx = gen_i #assign a new gen index
         init_gen.to_csv(logpath, mode='a', index=False, header=False, sep='\t')
 
+        if gen_i % args.checkpoint_interval == 0:
+            save_checkpoint(init_gen, args)
  
 #==================================== EVOLVER =====================================#
 #==================================================================================#
@@ -224,38 +209,34 @@ def extract_results(gen_i: int,
         #=======================================================================# 
         #=============================== SCORING ===============================# 
 
+
         if args.seq1_type == 'protein':
-            prot_chain = "A"
-            na_chain = None
-            ss, max_helix, max_beta = pypsique(structure, chain=prot_chain)
-            seq_data["seq1"]["ss"] = ss
-        else: 
-            prot_chain = None
-            na_chain = "A"
-            ss = "NASECONDARYSTRUCTURES"
-
-        if args.seq2_type == 'protein':
-            prot_chain = "B"
-            na_chain = None
-            ss, max_helix, max_beta = pypsique(structure, chain=prot_chain)
-            seq_data["seq2"]["ss"] = ss
-        else: 
-            prot_chain = None
-            na_chain = "B"
-            ss = "NASECONDARYSTRUCTURES"
+            protein_ss, _, _ = pypsique(structure, chain=args.protein_chain)
+            seq_data["seq1"]["ss"] = protein_ss
+        else:
+            nucleic_ss = "NASECONDARYSTRUCTURES"
+            seq_data["seq1"]["ss"] = nucleic_ss
+    
+        if args.seq2:
+            if args.seq2_type == 'protein':
+                protein_ss, _, _ = pypsique(structure, chain=args.protein_chain)
+                seq_data["seq2"]["ss"] = protein_ss
+            else:
+                nucleic_ss = "NASECONDARYSTRUCTURES"
+                seq_data["seq2"]["ss"] = nucleic_ss
 
 
-        if prot_chain in ["A", "B"]:
+        if args.protein_chain in ["A", "B"]:
             contact_density = pdb_contacts.contact_density(structure, 
                                                            cutoff=args.contact_cutoff,
-                                                           chain=prot_chain, 
+                                                           chain=args.protein_chain, 
                                                            min_plddt=args.contact_min_plddt, 
                                                            min_seq_dist=args.contact_min_seq_dist) 
                                     # for a 30aa polyA helix: min_seq_dist=3 => 51 contacts, 
                                     #                                      4 => 25 
                                     #                                      5 => 0  
         else: 
-            contact_density = 0.0
+            contact_density = 1.1
 
         seq1_len_penalty =  1 - sigmoid(seq_data["seq1"]["len"], args.seq1_len_constr, 0.2)
         
@@ -282,8 +263,12 @@ def extract_results(gen_i: int,
 
         elif args.evolution_type in ['PROTEIN_COMPLEX_COEVOLUTION', 'PROTEIN_COMPLEX_EVOLUTION']:
             
-            chainA_density = pdb_contacts.contact_density(structure, chain="A", min_plddt=args.contact_min_plddt, min_seq_dist=args.contact_min_seq_dist)
-            chainB_density = pdb_contacts.contact_density(structure, chain="B", min_plddt=args.contact_min_plddt, min_seq_dist=args.contact_min_seq_dist)
+            chainA_density = pdb_contacts.contact_density(structure, chain="A", \
+                                                          min_plddt=args.contact_min_plddt, \
+                                                            min_seq_dist=args.contact_min_seq_dist)
+            chainB_density = pdb_contacts.contact_density(structure, chain="B", \
+                                                          min_plddt=args.contact_min_plddt, \
+                                                            min_seq_dist=args.contact_min_seq_dist)
             
             contact_density = (chainA_density + chainB_density) / 2
 

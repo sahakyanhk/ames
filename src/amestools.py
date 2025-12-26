@@ -1,6 +1,8 @@
+import os
 import sys
 import gzip
 import json
+import uuid
 import shutil
 import argparse
 import numpy as np
@@ -46,20 +48,22 @@ def parse_args():
     parser.add_argument('--seq1_init', type=str, help='a sequence to initiate with [random, randoms, or sequence]')
     parser.add_argument('--seq1_type', type=str, help='a sequence to initiate with, if "random" pop_size random sequences will ')
     parser.add_argument('--seq1_len', type=int, help='seq len')
-    parser.add_argument('--seq1_evol', help='does this sequence evolve or not [True/false]', action='store_true')
+    parser.add_argument('--seq1_evol', help='does this sequence evolve [True/False]', action='store_true')
     #seq2 setup
     parser.add_argument('--iseq2', type=str, help='a sequence info to initiate with "protein:random:25:evolves"')
     parser.add_argument('--seq2_init', type=str, help='the 2nd sequence to initiate with [random, randoms, or sequence]')
     parser.add_argument('--seq2_type', type=str, help='seq type [proten, rna, dna] ')
     parser.add_argument('--seq2_len', type=int, help='seq len')
-    parser.add_argument('--seq2_evol', help='does this sequence evolve or not [True/false]', action='store_false')
+    parser.add_argument('--seq2_evol', help='does this sequence evolve [True/False]', action='store_false')
     parser.add_argument('--ligand', help="ligand(s) provided in slmiles of ccd format")
     #constraints
     parser.add_argument('--seq1_len_constr', type=int, help='constain seq1 length')
     parser.add_argument('--seq2_len_constr', type=int, help='constain seq2 length')
     #outputs
     parser.add_argument('-o','--outpath', type=str, help='output filepath for saving sampled sequences')
-    parser.add_argument('-l', '--log', type=str, help='log output')   
+    parser.add_argument('-l', '--log', type=str, help='output log file name')
+    parser.add_argument('-c', '--ckp', type=str, help='checkpoint file name')    
+    parser.add_argument('-ckpi', '--checkpoint_interval', type=int, help='chechpoint saving frequency (generations)')
     parser.add_argument('--nobackup', action='store_true', help='overwrite files if exists')
     #contact calculatsion
     parser.add_argument('--contact_min_seq_dist', type=int, help='annealing step')
@@ -149,20 +153,25 @@ def parse_args():
         if args.annealing_step is None:
             args.annealing_step = round((args.beta_target - args.beta) / (args.annealing_end - args.annealing_start), 3) #linearly increas beta from ann_start to ann_end
         
-
+    args.protein_chain = None
+    args.nucleic_chain = None
 
     # determine evoltion type from input params
     if args.seq1_type == 'protein' and args.seq2_type is None:
         args.evolution_type = 'PROTEIN_FOLD_EVOLUTION'
+        args.protein_chain = 'A'
 
     elif args.seq1_type in ['rna', 'dna'] and args.seq2_type is None:
         args.evolution_type = 'NA_FOLD_EVOLUTION'
+        args.nucleic_chain = 'A'
 
     elif args.seq1_type == 'protein' and args.seq2_type == 'protein':
         if args.seq2_evol:
             args.evolution_type = 'PROTEIN_COMPLEX_COEVOLUTION'
         else:
             args.evolution_type = 'PROTEIN_COMPLEX_EVOLUTION'
+
+        args.protein_chain = ["A", "B"]
 
     elif (args.seq1_type == 'protein' and args.seq2_type in ['rna', 'dna']) \
         or (args.seq1_type in ['rna', 'dna'] and args.seq2_type == 'protein'):
@@ -171,12 +180,22 @@ def parse_args():
             args.evolution_type = 'PROTEIN_NA_COEVOLUTION'
         else:
             args.evolution_type = 'PROTEIN_NA_EVOLUTION'
+        
+        if args.seq1_type == 'protein':
+            args.protein_chain = 'A'
+            args.nucleic_chain = 'B'
+        else:
+            args.protein_chain = 'B'
+            args.nucleic_chain = 'A'
 
     elif args.seq1_type in ['rna', 'dna'] and args.seq2_type in ['rna', 'dna']:
         if args.seq2_evol:
             args.evolution_type = 'NA_COMPLEX_COEVOLUTION'
         else:
             args.evolution_type = 'NA_COMPLEX_EVOLUTION'
+
+        args.nucleic_chain = ['A','B']
+
 
     if args.evolution_type in ['PROTEIN_FOLD_EVOLUTION', 'NA_FOLD_EVOLUTION']:
         args.seq2 = False
@@ -186,6 +205,41 @@ def parse_args():
 
     return args
 
+def save_checkpoint(generation, args):
+    ckekpoint_path = os.path.join(args.outpath, args.ckp)
+    loghead = generate_loghead(args)
+    
+    with open(ckekpoint_path, "w") as f:
+        f.write(loghead)
+    
+    generation.to_csv(ckekpoint_path, mode='a', index=True, header=True, sep='\t')
+
+
+
+
+
+# def load_checkpoint():
+
+def generate_loghead(args) -> str:
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    uid = str(uuid.uuid4())
+    params = [f"#--{param:<24} = {value}\n" for param, value in vars(args).items()]
+
+    loghead = f'''
+#>======================= AMESv0.1 =======================<#
+#>=================== {timestamp} ====================<#
+#>======== {uid} ==========<#
+#WD: {os.getcwd()}
+#${' '.join(sys.argv)}
+#
+#======================= input params =====================#
+#
+''' + ''.join(params).strip() + '''
+#
+#==========================================================#
+'''
+    return loghead
 
 def gzip_str(cif_str):
     return gzip.compress(cif_str.encode('utf-8'))
@@ -199,6 +253,7 @@ def sigmoid(x:float|int, L0=0.0, c=0.1) -> float:
 
 def update_beta(args):
     args.beta += args.annealing_step
+
 
 
 def gc_content(seq:str) -> float:
@@ -420,6 +475,7 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
     init_gen["beta"] = args.beta
     init_gen['mutation'] = 'init_gen'
     init_gen['prev_id'] = 'init_gen'
+    init_gen['gndx'] = 0
 
     init_gen.round(3)
 
