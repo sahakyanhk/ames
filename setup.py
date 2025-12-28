@@ -3,7 +3,7 @@ import pybind11
 
 ext_modules = [
     Extension(
-        'bin/pdb_contacts',
+        'pdb_contacts',
         ['src/pdb_contacts.cpp'],
         include_dirs=[pybind11.get_include()],
         language='c++',
@@ -11,8 +11,10 @@ ext_modules = [
     ),
 ]
 
-
 setup(
     name='pdb_contacts',
+    version='1.0.0',
     ext_modules=ext_modules,
+    # This makes pip install it properly to site-packages
+    zip_safe=False,
 )
