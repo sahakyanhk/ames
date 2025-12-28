@@ -195,7 +195,7 @@ def extract_results(gen_i: int,
 
     batch_rows = [] 
 
-    for meta_id, seq_data, structure, ptm, plddt, iptm in \
+    for meta_id, seq_data, pdb_txt, ptm, plddt, iptm in \
         zip(headers, sequence_data_batch, structures, ptms, plddts, iptms):
         
         uid_data = meta_id.split('_')
@@ -210,23 +210,29 @@ def extract_results(gen_i: int,
 
 
         if args.seq1_type == 'protein':
-            protein_ss, _, _ = pypsique(structure, chain=args.protein_chain)
+            protein_ss, _, _ = pypsique(pdb_txt, chain=args.protein_chain)
             seq_data["seq1"]["ss"] = protein_ss
         else:
             nucleic_ss = "NASECONDARYSTRUCTURES"
             seq_data["seq1"]["ss"] = nucleic_ss
     
         if args.seq2:
+
+            iplddt = round(pdb_contacts.interface_plddt(pdb_txt, chain1 = "A", chain2 = "B", cutoff = 7) * 0.01, 3)
+
             if args.seq2_type == 'protein':
-                protein_ss, _, _ = pypsique(structure, chain=args.protein_chain)
+                protein_ss, _, _ = pypsique(pdb_txt, chain=args.protein_chain)
                 seq_data["seq2"]["ss"] = protein_ss
             else:
                 nucleic_ss = "NASECONDARYSTRUCTURES"
                 seq_data["seq2"]["ss"] = nucleic_ss
 
+        else:
+            iplddt = 0.0
+
 
         if args.protein_chain in ["A", "B"]:
-            contact_density = pdb_contacts.contact_density(structure, 
+            contact_density = pdb_contacts.contact_density(pdb_txt, 
                                                            cutoff=args.contact_cutoff,
                                                            chain=args.protein_chain, 
                                                            min_plddt=args.contact_min_plddt, 
@@ -236,6 +242,7 @@ def extract_results(gen_i: int,
                                     #                                      5 => 0  
         else: 
             contact_density = 0.0
+
 
         seq1_len_penalty =  1 - sigmoid(seq_data["seq1"]["len"], args.seq1_len_constr, 0.2)
         
@@ -255,24 +262,24 @@ def extract_results(gen_i: int,
             score = (0.8*ptm + 0.2*plddt) * penalty
 
         elif args.evolution_type in ['PROTEIN_NUCLEIC_COEVOLUTION', 'PROTEIN_NUCLEIC_EVOLUTION']:
-            score =  (0.5*iptm + 0.2*ptm + 0.15*plddt + 0.15*contact_density) * penalty
+            score = (0.25*iptm + 0.25*iplddt + 0.2*ptm + 0.1*plddt + 0.2*contact_density) * penalty
 
         elif args.evolution_type == 'NUCLEIC_COMPLEX_COEVOLUTION':                
-            score = (0.6*iptm + 0.2*plddt + 2*plddt) * penalty
+            score = (0.3*iptm + 0.3*iplddt + 0.2*plddt + 2*plddt) * penalty
 
         elif args.evolution_type in ['PROTEIN_COMPLEX_COEVOLUTION', 'PROTEIN_COMPLEX_EVOLUTION']:
-            
-            chainA_density = pdb_contacts.contact_density(structure, chain="A", \
+
+            chainA_density = pdb_contacts.contact_density(pdb_txt, chain="A", \
                                                           min_plddt=args.contact_min_plddt, \
                                                             min_seq_dist=args.contact_min_seq_dist)
-            chainB_density = pdb_contacts.contact_density(structure, chain="B", \
+            chainB_density = pdb_contacts.contact_density(pdb_txt, chain="B", \
                                                           min_plddt=args.contact_min_plddt, \
                                                             min_seq_dist=args.contact_min_seq_dist)
-            
+
             contact_density = (chainA_density + chainB_density) / 2
 
-            score =  (0.4*iptm + 0.2*ptm + 0.1*plddt + 0.3*contact_density) * penalty
-            
+            score =  (0.25*iptm + 0.25*plddt + 0.1*ptm + 0.1*plddt + 0.3*contact_density) * penalty
+
 
         score = round(score, 3)
 
@@ -280,8 +287,6 @@ def extract_results(gen_i: int,
         #=======================================================================# 
         
         
-        structure = gzip_str(structure)
-
         # Create the dictionary for this specific row
         row_data = {
             'gndx': gen_i,
@@ -289,13 +294,14 @@ def extract_results(gen_i: int,
             'beta': round(args.beta, 3),
             'plddt': plddt,
             'ptm': ptm, 
+            'iplddt': iplddt,
             'iptm': iptm,
             'cd': contact_density,
             'score': score,
             'sequence_data': seq_data, 
             'mutation': mutation,
             'prev_id': prev_id,
-            'structure': structure,
+            'structure': gzip_str(pdb_txt),
         }
 
 
@@ -315,7 +321,6 @@ def extract_results(gen_i: int,
 
 #================================= RESULT PROCESSING ================================#
 #====================================================================================#
-
 
 
 args = parse_args()

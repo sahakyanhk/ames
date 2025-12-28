@@ -417,6 +417,7 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
                                      "beta", 
                                      "plddt", 
                                      "ptm", 
+                                     "iplddt",
                                      "iptm", 
                                      "cd",
                                      "score",  
@@ -522,6 +523,7 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
 
     init_gen["structure"] = [gzip_str(pdb) for pdb in tmp_pdbs]
     init_gen["cd"] = 0.0
+    init_gen["iplddt"] = 0.0
     init_gen["score"] = 0.01 # 0.5 * init_gen["ptm"] + 0.5 * init_gen["plddt"] # TODO automatically adjust score based on sequene types
     init_gen["beta"] = args.beta
     init_gen['mutation'] = 'init_gen'
