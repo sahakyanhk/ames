@@ -1,5 +1,6 @@
 # AMES: atomistic molecular evolution simulator
 
+### Experimental code for protein-RNA evolution sumulation
 
 ### Installation
 
@@ -20,7 +21,7 @@ python src/ames.py --iseq1 protein:random:50:evolv --iseq2 rna:random:24:evolv -
 
 python src/visual_ames.py -l outputs/test/progress.log
 ```
-or submit a sbatch job with SLURM:
+or submit a batch job with SLURM:
 
 ```
 bash run_ames.sbatch outputs/test/run01
