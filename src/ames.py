@@ -1,5 +1,4 @@
 import os
-import sys
 import shutil
 import random
 import copy
@@ -38,9 +37,9 @@ write_lock = threading.Lock()
 def fold_evolution_simulator(args, evolver) -> None: 
 
     global new_gen #this will be modified in the extract_results() 
-    print(args.ckp)
+
     logpath = os.path.join(args.outpath, args.log)
-    ckppath = os.path.join(args.outpath, args.ckp)
+    checkpoint_path = os.path.join(args.outpath, args.ckp)
 
     loghead = generate_loghead(args)
 
@@ -236,7 +235,7 @@ def extract_results(gen_i: int,
                                     #                                      4 => 25 
                                     #                                      5 => 0  
         else: 
-            contact_density = 1.1
+            contact_density = 0.0
 
         seq1_len_penalty =  1 - sigmoid(seq_data["seq1"]["len"], args.seq1_len_constr, 0.2)
         
@@ -252,13 +251,13 @@ def extract_results(gen_i: int,
         if args.evolution_type == 'PROTEIN_FOLD_EVOLUTION':
             score = (0.4*ptm + 0.2*plddt + 0.4*contact_density) * penalty
 
-        elif args.evolution_type == 'NA_FOLD_EVOLUTION':                
+        elif args.evolution_type == 'NUCLEIC_FOLD_EVOLUTION':                
             score = (0.8*ptm + 0.2*plddt) * penalty
 
-        elif args.evolution_type in ['PROTEIN_NA_COEVOLUTION', 'PROTEIN_NA_EVOLUTION']:
+        elif args.evolution_type in ['PROTEIN_NUCLEIC_COEVOLUTION', 'PROTEIN_NUCLEIC_EVOLUTION']:
             score =  (0.5*iptm + 0.2*ptm + 0.15*plddt + 0.15*contact_density) * penalty
 
-        elif args.evolution_type == 'NA_COMPLEX_COEVOLUTION':                
+        elif args.evolution_type == 'NUCLEIC_COMPLEX_COEVOLUTION':                
             score = (0.6*iptm + 0.2*plddt + 2*plddt) * penalty
 
         elif args.evolution_type in ['PROTEIN_COMPLEX_COEVOLUTION', 'PROTEIN_COMPLEX_EVOLUTION']:

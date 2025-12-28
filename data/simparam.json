@@ -25,6 +25,8 @@
     "seq2_len_constr": 250,
     "outpath": "ames_output/output",
     "log": "progress.log",
+    "ckp": "progress.ckp",
+    "checkpoint_interval": 5,
     "nobackup": false,
     "contact_min_seq_dist": 4,
     "contact_cutoff": 4.5,

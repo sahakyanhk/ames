@@ -162,7 +162,7 @@ def parse_args():
         args.protein_chain = 'A'
 
     elif args.seq1_type in ['rna', 'dna'] and args.seq2_type is None:
-        args.evolution_type = 'NA_FOLD_EVOLUTION'
+        args.evolution_type = 'NUCLEIC_FOLD_EVOLUTION'
         args.nucleic_chain = 'A'
 
     elif args.seq1_type == 'protein' and args.seq2_type == 'protein':
@@ -177,9 +177,9 @@ def parse_args():
         or (args.seq1_type in ['rna', 'dna'] and args.seq2_type == 'protein'):
 
         if args.seq2_evol:
-            args.evolution_type = 'PROTEIN_NA_COEVOLUTION'
+            args.evolution_type = 'PROTEIN_NUCLEIC_COEVOLUTION'
         else:
-            args.evolution_type = 'PROTEIN_NA_EVOLUTION'
+            args.evolution_type = 'PROTEIN_NUCLEIC_EVOLUTION'
         
         if args.seq1_type == 'protein':
             args.protein_chain = 'A'
@@ -190,14 +190,14 @@ def parse_args():
 
     elif args.seq1_type in ['rna', 'dna'] and args.seq2_type in ['rna', 'dna']:
         if args.seq2_evol:
-            args.evolution_type = 'NA_COMPLEX_COEVOLUTION'
+            args.evolution_type = 'NUCLEIC_COMPLEX_COEVOLUTION'
         else:
-            args.evolution_type = 'NA_COMPLEX_EVOLUTION'
+            args.evolution_type = 'NUCLEIC_COMPLEX_EVOLUTION'
 
         args.nucleic_chain = ['A','B']
 
 
-    if args.evolution_type in ['PROTEIN_FOLD_EVOLUTION', 'NA_FOLD_EVOLUTION']:
+    if args.evolution_type in ['PROTEIN_FOLD_EVOLUTION', 'NUCLEIC_FOLD_EVOLUTION']:
         args.seq2 = False
     else:
         args.seq2 = True
@@ -205,20 +205,72 @@ def parse_args():
 
     return args
 
-def save_checkpoint(generation, args):
-    ckekpoint_path = os.path.join(args.outpath, args.ckp)
+def save_checkpoint(ckp_gen, args):
+    ckeckpoint_path = os.path.join(args.outpath, args.ckp)
     loghead = generate_loghead(args)
     
-    with open(ckekpoint_path, "w") as f:
+    with open(ckeckpoint_path, "w") as f:
         f.write(loghead)
     
-    generation.to_csv(ckekpoint_path, mode='a', index=True, header=True, sep='\t')
+    ckp_gen.to_csv(ckeckpoint_path, mode='a', index=False, header=True, sep='\t')
 
 
 
+def load_checkpoint(checkpoint_path):
+
+    def parse_value(value): #Convert string value to appropriate Python type
+        value = value.strip()
+        # None
+        if value == "None":
+            return None
+        
+        # Boolean
+        if value == "True":
+            return True
+        if value == "False":
+            return False
+        
+        # Try int
+        try:
+            return int(value)
+        except ValueError:
+            pass
+        
+        # Try float
+        try:
+            return float(value)
+        except ValueError:
+            pass
+        
+        # Default to string
+        return value
+    
+    loghead_lines = []
+    
+    for line in open(checkpoint_path):
+        if line.startswith("#"):
+            loghead_lines.append(line)            
+        else:
+            break
+
+    timestamp = loghead_lines[1].split()[1]
+    uid = loghead_lines[2].split()[1]
 
 
-# def load_checkpoint():
+    # Parse the config
+    arg_dict = {}
+    for line in loghead_lines:
+        if line.startswith("#--"):
+            key, value = line.split("=", 1)  # split only on first '='
+            key = key.strip().lstrip("#--")
+            arg_dict[key] = parse_value(value)
+    
+    ckp_gen  = pd.read_csv(checkpoint_path, 
+                           sep='\t', comment = '#', index_col = None)
+    gndx = ckp_gen.gndx[0]
+
+    return  ckp_gen, arg_dict
+
 
 def generate_loghead(args) -> str:
 
@@ -226,10 +278,9 @@ def generate_loghead(args) -> str:
     uid = str(uuid.uuid4())
     params = [f"#--{param:<24} = {value}\n" for param, value in vars(args).items()]
 
-    loghead = f'''
-#>======================= AMESv0.1 =======================<#
-#>=================== {timestamp} ====================<#
-#>======== {uid} ==========<#
+    loghead = f'''#======================== AMESv0.1 ========================#
+#==================== {timestamp} =====================#
+#========= {uid} ===========#
 #WD: {os.getcwd()}
 #${' '.join(sys.argv)}
 #
