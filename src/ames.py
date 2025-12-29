@@ -49,8 +49,6 @@ def fold_evolution_simulator(args, evolver) -> None:
     with open(logpath, 'w') as f:
         f.write(loghead)
 
-    #    f.write('\t'.join(init_gen.keys()) + '\n')
-    
     init_gen = create_init_gen(evolver, args)
     init_gen.to_csv(logpath, mode='a', index=False, header=True, sep='\t')
 

@@ -1,6 +1,7 @@
 import os
 import sys
 import gzip
+import base64
 import json
 import uuid
 import shutil
@@ -202,7 +203,8 @@ def parse_args():
     else:
         args.seq2 = True
 
-
+    args.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    args.uid = str(uuid.uuid4())
     return args
 
 def save_checkpoint(ckp_gen, args):
@@ -214,9 +216,9 @@ def save_checkpoint(ckp_gen, args):
     
     ckp_gen.to_csv(ckeckpoint_path, mode='a', index=False, header=True, sep='\t')
 
-
-
-def load_checkpoint(checkpoint_path):
+def read_header(log_path:str) -> dict:
+    
+    assert os.path.isfile(log_path), print(log_path, " does not exist")
 
     def parse_value(value): #Convert string value to appropriate Python type
         value = value.strip()
@@ -246,25 +248,31 @@ def load_checkpoint(checkpoint_path):
         return value
     
     loghead_lines = []
-    
-    for line in open(checkpoint_path):
+    arg_dict = {}
+
+    for line in open(log_path):
+        
+        if line == "\n":
+            continue
+
         if line.startswith("#"):
             loghead_lines.append(line)            
         else:
             break
 
-    timestamp = loghead_lines[1].split()[1]
-    uid = loghead_lines[2].split()[1]
-
 
     # Parse the config
-    arg_dict = {}
     for line in loghead_lines:
         if line.startswith("#--"):
             key, value = line.split("=", 1)  # split only on first '='
             key = key.strip().lstrip("#--")
             arg_dict[key] = parse_value(value)
-    
+
+    return arg_dict
+
+def load_checkpoint(checkpoint_path):
+
+    arg_dict = read_header(checkpoint_path)    
     ckp_gen  = pd.read_csv(checkpoint_path, 
                            sep='\t', comment = '#', index_col = None)
     gndx = ckp_gen.gndx[0]
@@ -274,17 +282,13 @@ def load_checkpoint(checkpoint_path):
 
 def generate_loghead(args) -> str:
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    uid = str(uuid.uuid4())
     params = [f"#--{param:<24} = {value}\n" for param, value in vars(args).items()]
 
     loghead = f'''#======================== AMESv0.1 ========================#
-#==================== {timestamp} =====================#
-#========= {uid} ===========#
 #WD: {os.getcwd()}
 #${' '.join(sys.argv)}
 #
-#======================= input params =====================#
+#========================= params =========================#
 #
 ''' + ''.join(params).strip() + '''
 #
@@ -292,8 +296,14 @@ def generate_loghead(args) -> str:
 '''
     return loghead
 
-def gzip_str(cif_str):
-    return gzip.compress(cif_str.encode('utf-8'))
+# compress and decompres strings:
+def gzip_str(cif_str: str) -> str:
+    compressed = gzip.compress(cif_str.encode('utf-8'))
+    return base64.b64encode(compressed).decode('ascii')
+
+def ungzip_str(b64_str: str) -> str:
+    compressed = base64.b64decode(b64_str)
+    return gzip.decompress(compressed).decode('utf-8')
 
 
 def sigmoid(x:float|int, L0=0.0, c=0.1) -> float:
