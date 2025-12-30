@@ -1,11 +1,3 @@
-import numpy as np
-from seqtools import Seqstat 
-
-seqstat = Seqstat()
-
-
-
-
 def fold_evolution_simulacrum(input_list: list[dict] | list[list[dict]], args) -> tuple[list[str], list[float], list[float], list[float]]:
     
     if isinstance(input_list, dict):

@@ -5,34 +5,41 @@ from pathlib import Path
 from collections import Counter
 import numpy as np
 
-class Seqstat:
+class Seqtools:
 
-    DEFAULT_KMER_STAT = 'data/seqstat.json'
-
-    def __init__(self, stat_from_fasta: T.Optional[str] = None):
+    def __init__(self, stat_from_input = "data/scop40_stat.json", seqtype = 'protein'):
+        
         self.kmer_stat = {}
-        
-        # Priority: Load from FASTA if provided
-        if stat_from_fasta:  
-            try:
-                print(f"Calculating new statistics from {stat_from_fasta}")
-                # Optimization: Do not load all sequences into memory at once
-                self.kmer_stat = self.calculate_background_distribution(stat_from_fasta)
-                
-                with open(f"seq_stat_from_{os.path.basename(stat_from_fasta)}", 'w') as f:
-                    json.dump(self.kmer_stat, f)
+        self.seqtype = seqtype
 
-            except Exception as e:
-                print(f"ERROR: Could not process {stat_from_fasta}.\n{e}")
-                raise e # Re-raise to stop execution if init fails
-        
-        # Fallback: Load from JSON
-        elif Path(self.DEFAULT_KMER_STAT).exists():  
-            print(f"Loading statistics from {self.DEFAULT_KMER_STAT}")
-            with open(self.DEFAULT_KMER_STAT, 'r') as f:
-                self.kmer_stat = json.load(f)
+        assert self.seqtype in ['protein', 'rna', 'dna'], "Wrong setype, must be 'protein', 'rna' or 'dna'"
+
+        # Priority: Load from FASTA if provided
+        if Path(stat_from_input).exists():  
+            if stat_from_input.split('.')[-1] == "json":
+                try:
+                    print(f"Loading statistics from {stat_from_input}")
+                    with open(stat_from_input, 'r') as f:
+                        self.kmer_stat = json.load(f)
+                except Exception as e:
+                    print(f"ERROR: Could not process {stat_from_input}.\
+                          \nCalculate dictribution from a fasta file with \
+                          calculate_background_distribution or provide valid JSON\n{e}")
+                    pass
+
+            elif stat_from_input.split('.')[-1] in ["fasta", "fa", "fas"]:
+                try:
+                    print(f"Calculating statistics from {stat_from_input}")
+                    self.calculate_background_distribution(stat_from_input)
+
+                except Exception as e:
+                    print(f"ERROR: Could not process {stat_from_input}.\
+                          \nCalculate dictribution from a fasta file with \
+                          calculate_background_distribution or provide valid JSON\n{e}")
+                    pass
+
         else:
-            print("Warning: No stats loaded. Run background_distribution or provide valid JSON.")
+            print(f"{stat_from_input} does not exist. Run calculate_background_distribution or provide valid JSON.")
 
 
     @staticmethod
@@ -88,22 +95,21 @@ class Seqstat:
 
     def split2kmers(self, seq: str|list, k=3) -> list:
         seqlen = len(seq)
-        assert 0 < k <= seqlen // 2 # make sure k-mer size is 2x smaller than initital string
+        assert 0 < k <= seqlen // 2, f"Invalid k={k} for {seq}" # make sure k-mer size is 2x smaller than initital string
         return [seq[i:i+k] for i in range(seqlen-k+1)]
 
     def calcule_probabilities(self, kmers) -> dict:
         num_kmers = len(kmers)
         return {i: j/num_kmers for i, j in Counter(kmers).items()}    
-    
 
-    def calculate_background_distribution(self, fasta_path: str) -> dict:
-
+    def calculate_background_distribution(self, fasta_path: str) -> None:
+        
+        self.kmer_stat = {}
         counts = {
             1: Counter(),
             2: Counter(),
             3: Counter()
         }
-        
 
         print("Parsing sequences...")
         count = 0
@@ -118,32 +124,49 @@ class Seqstat:
             if count % 100000 == 0:
                 print(f"Processed {count} sequences...", end='\r')
             
-        print(f"\nRaw processing complete. Processed {count} sequences.")
+        print(f"\nProcessed {count} sequences.")
         
         print("Filtering invalid k-mers...")
 
         #Prune invalid k-mers
-        invalid_chars = set(['X', 'Z', 'B', 'J', 'O', 'U'])
+        if self.seqtype == "protein":
+            valid_chars = set("ACDEFGHIKLMNPQRSTVWY")
+
+        elif self.seqtype == "rna":
+            valid_chars = set("AUGC")
+        
+        elif self.seqtype == "dna":
+            valid_chars = set("ATGC")
+            
+
         for n in [1, 2, 3]:
 
             unique_kmers = list(counts[n].keys())
             
             for kmer in unique_kmers:
                 # Check if this specific k-mer contains any bad char
-                if set(kmer) & invalid_chars:
+                if set(kmer) - valid_chars:
                     del counts[n][kmer]
+        # Convert counts to probabilities
+        def counts_to_probs(counter):
+            total = sum(counter.values())
+            return {k: v / total for k, v in counter.items()}
 
-        # Calculate Probabilities on the clean data
-        return {
-            'monomers': self.calcule_probabilities(counts[1]), 
-            'dimers':   self.calcule_probabilities(counts[2]),
-            'trimers':  self.calcule_probabilities(counts[3])
+        self.kmer_stat = {
+            'monomers': counts_to_probs(counts[1]),
+            'dimers':   counts_to_probs(counts[2]),
+            'trimers':  counts_to_probs(counts[3])
         }
 
-    def kullback_leibler(self, p,q):
+    def save_background_distribution(self, output_path):
 
-        D_KL = sum([p_val * np.log(p_val / q[k]) for k, p_val in p.items()])
-        
+        if self.kmer_stat: 
+            with open(output_path, 'w') as f:
+                json.dump(self.kmer_stat, f)
+
+
+    def kullback_leibler(self, p, q):
+        D_KL = sum([p_val * np.log(p_val / q[k]) for k, p_val in p.items() if k in q])
         return D_KL
 
 
@@ -159,5 +182,6 @@ class Seqstat:
         energy_tri = self.kullback_leibler(P3_seq, self.kmer_stat['trimers'])
 
         # Total N-gram Energy
-        return energy_uni + energy_bi + energy_tri
+        ngram_energy = energy_uni + energy_bi + energy_tri
+        return  round(float(ngram_energy), 3)
         

@@ -8,7 +8,7 @@ from datetime import datetime
 
 #AMES modules
 from evolution import Evolver
-from seqtools import Seqstat
+from seqtools import Seqtools
 import pdb_contacts
 from psique import pypsique
 
@@ -366,8 +366,8 @@ def extract_results(gen_i: int,
 args = parse_args()
 
 evolver = Evolver()
-protein_seqstat = Seqstat()
-rna_seqstat = Seqstat() #test! using prot stat for RNA
+protein_seqstat = Seqtools('data/scop40_stat.json')
+rna_seqstat = Seqtools('data/rfam80_stat.json') #test! using prot stat for RNA
 
 #backup if output directory exists
 if args.nobackup:
