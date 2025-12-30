@@ -371,6 +371,5 @@ def af3_runner(input_fold_list: list[dict] | list[list[dict]]) -> tuple[list[str
         plddts.append(round(plddt, 3))
         ptms.append(round(ptm, 3))
         iptms.append(round(iptm, 3))
-        ranking_scores.append(round(max_ranking_score, 3))        
 
-    return (structures, plddts, ptms, iptms, ranking_scores)  # type: ignore
+    return (structures, plddts, ptms, iptms)  # type: ignore
