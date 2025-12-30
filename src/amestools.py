@@ -12,8 +12,6 @@ import typing as T
 from pathlib import Path
 from datetime import datetime
 
-from af3_runner import af3_runner as structure_predictor
-
 
 
 def parse_args():
@@ -71,6 +69,7 @@ def parse_args():
     parser.add_argument('--contact_cutoff', type=float, help='annealing step')
     parser.add_argument('--contact_min_plddt', type=float, help='annealing step')
     #other
+    parser.add_argument('--prediction_engine', type=str, help="structure prediction engine")
     parser.add_argument('--norepeat', action='store_true', help='do not generate and/or select the same sequences more than once')
     parser.add_argument('--max_seq_per_batch', type=int, help='max_seq_per_batch, by defaulf it is half or population size')
 
@@ -125,9 +124,6 @@ def parse_args():
             sys.exit(1)
 
     assert args.seq1_evol == True or args.seq2_evol == True, "either seq1_evol or seq1_evol must be True"
-
-    args.prediction_engine = "AF3"
-
 
     if args.max_seq_per_batch is None:
         args.max_seq_per_batch = args.pop_size // 2
@@ -313,7 +309,7 @@ def sigmoid(x:float|int, L0=0.0, c=0.1) -> float:
     return 1 / (1 + np.exp(z))
 
 def update_beta(args):
-    args.beta += args.annealing_step
+    args.beta += round(args.annealing_step, 3)
 
 
 
@@ -516,29 +512,19 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
                     "evolve": args.seq2_evol,
                 }
 
-    init_gen['sequence_data'] = seq_data
-    
-    fold_input = prepare_af3_input(init_gen['sequence_data'], args)
 
-    if args.seq1_init == 'random' and (args.seq2_init == 'random' or args.seq2_init is None):
-        #do not predict the same structure multiple times
-        tmp_pdbs, init_gen_plddt, init_gen_ptm, init_gen_iptm, ranking_scores = structure_predictor(fold_input[0]) # type: ignore
-        tmp_pdbs, init_gen["plddt"], init_gen["ptm"], init_gen["iptm"], _ = tmp_pdbs * args.pop_size, \
-                                                                                                    init_gen_plddt * args.pop_size, \
-                                                                                                    init_gen_ptm * args.pop_size, \
-                                                                                                    init_gen_iptm * args.pop_size, \
-                                                                                                    ranking_scores * args.pop_size
-    else:
-        tmp_pdbs, init_gen["plddt"], init_gen["ptm"], init_gen["iptm"], _ = structure_predictor(fold_input) # type: ignore
-
-    init_gen["structure"] = [gzip_str(pdb) for pdb in tmp_pdbs]
-    init_gen["cd"] = 0.0
-    init_gen["iplddt"] = 0.0
-    init_gen["score"] = 0.01 # 0.5 * init_gen["ptm"] + 0.5 * init_gen["plddt"] # TODO automatically adjust score based on sequene types
+    init_gen["gndx"] = 0
     init_gen["beta"] = args.beta
-    init_gen['mutation'] = 'init_gen'
-    init_gen['prev_id'] = 'init_gen'
-    init_gen['gndx'] = 0
+    init_gen["plddt"] = 0.0
+    init_gen["ptm"] = 0.0
+    init_gen["iplddt"] = 0.0
+    init_gen["iptm"] = 0.0
+    init_gen["cd"] = 0.0
+    init_gen["score"] = 0.01 
+    init_gen['sequence_data'] = seq_data        
+    init_gen["mutation"] = "init_gen"
+    init_gen["prev_id"] = "init_gen"
+    init_gen["structure"] = "init_gen" 
 
     init_gen.round(3)
 

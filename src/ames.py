@@ -8,6 +8,7 @@ from datetime import datetime
 
 #AMES modules
 from evolution import Evolver
+from seqtools import Seqstat
 import pdb_contacts
 from psique import pypsique
 
@@ -21,11 +22,8 @@ from amestools import (parse_args,
                        backup_output, 
                        batch_sequence_dataset, 
                        create_init_gen,
-                       prepare_af3_input,
                        print_genlog,
                       )
-
-from af3_runner import af3_runner as structure_predictor
 
 
 write_lock = threading.Lock()
@@ -34,7 +32,7 @@ write_lock = threading.Lock()
 #========================================================================================#
 #======================================# EVOLVER #=======================================#
 
-def fold_evolution_simulator(args, evolver) -> None: 
+def fold_evolution_simulator() -> None: 
 
     global new_gen #this will be modified in the extract_results() 
 
@@ -138,10 +136,14 @@ def fold_evolution_simulator(args, evolver) -> None:
         #predict data for the new batch        
         for headers, sequence_data_batch in batched_sequence_data:
             
+            if args.prediction_engine == "af3":
+                fold_input = prepare_af3_input(sequence_data_batch, args)
+                structure_predictor_ouptut = structure_predictor(fold_input)  # type: ignore
 
-            fold_input = prepare_af3_input(sequence_data_batch, args)
+            elif args.prediction_engine == "simulacrum":
+                structure_predictor_ouptut = fold_evolution_simulacrum(sequence_data_batch, args) #imitate empty of3/af3 engine output
 
-            structure_predictor_ouptut  = structure_predictor(fold_input)  # type: ignore
+
 
             #run extract_results() in beckground and imediately start next the round of model.infer()
             trd = threading.Thread(target=extract_results, \
@@ -189,7 +191,7 @@ def extract_results(gen_i: int,
     
     global new_gen # Access the global dataframe
 
-    structures, plddts, ptms, iptms, _ = structure_predictor_ouptut
+    structures, plddts, ptms, iptms = structure_predictor_ouptut
 
     batch_rows = [] 
 
@@ -202,6 +204,46 @@ def extract_results(gen_i: int,
         prev_id = uid_data[1]
         mutation = uid_data[2]
         
+        # calculate seq_stat 
+        if args.seq1_type == 'protein':
+            seq_data["seq1"]["seqstat"] = protein_seqstat.n_gram_prior(seq_data["seq1"]["sequence"])
+        else:
+            seq_data["seq1"]["seqstat"] = rna_seqstat.n_gram_prior(seq_data["seq1"]["sequence"])
+    
+        if args.seq2:
+            if args.seq2_type == 'protein':
+                seq_data["seq2"]["seqstat"] = protein_seqstat.n_gram_prior(seq_data["seq2"]["sequence"])
+            else:
+                seq_data["seq2"]["seqstat"] = rna_seqstat.n_gram_prior(seq_data["seq2"]["sequence"])
+
+        else:
+            iplddt = 0.0
+
+        # imitate simulation without real structure prediction
+        if args.prediction_engine == "simulacrum":
+            score = seq_data["seq1"]["seqstat"]
+
+            row_data = {
+                        'gndx': gen_i,
+                        'id': uid, 
+                        'beta': args.beta,
+                        'plddt': 0.0,
+                        'ptm': 0.0, 
+                        'iplddt': 0.0,
+                        'iptm': 0.0,
+                        'cd': 0.0,
+                        'score': score,
+                        'sequence_data': seq_data, 
+                        'mutation': mutation,
+                        'prev_id': prev_id,
+                        'structure': pdb_txt,
+                    }
+
+
+            # Append to local list instead of the global DataFrame immediately
+            batch_rows.append(row_data)
+
+            continue
 
         #=======================================================================# 
         #=============================== SCORING ===============================# 
@@ -289,7 +331,7 @@ def extract_results(gen_i: int,
         row_data = {
             'gndx': gen_i,
             'id': uid, 
-            'beta': round(args.beta, 3),
+            'beta': args.beta,
             'plddt': plddt,
             'ptm': ptm, 
             'iplddt': iplddt,
@@ -307,7 +349,7 @@ def extract_results(gen_i: int,
         batch_rows.append(row_data)
 
     batch_df = pd.DataFrame(batch_rows)
-
+    
     # lock ONCE per batch
     with write_lock:
         if new_gen.empty:
@@ -324,7 +366,8 @@ def extract_results(gen_i: int,
 args = parse_args()
 
 evolver = Evolver()
-
+protein_seqstat = Seqstat()
+rna_seqstat = Seqstat() #test! using prot stat for RNA
 
 #backup if output directory exists
 if args.nobackup:
@@ -335,9 +378,17 @@ if args.nobackup:
 else:
     backup_output(args.outpath)
     
+if args.prediction_engine == "af3":
+    from af3_runner import af3_runner as structure_predictor
+    from amestools import prepare_af3_input
 
+# elif args.prediction_engine == "of3":
+#     from of3_runner import of3_runner as structure_predictor
+
+elif args.prediction_engine == "simulacrum":
+    from simulacra import fold_evolution_simulacrum
 if __name__ == '__main__':
 
-    fold_evolution_simulator(args, evolver)
+    fold_evolution_simulator()
 
 
