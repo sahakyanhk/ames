@@ -315,9 +315,6 @@ model_runner = create_model_runner(model_dir="/data/saakyanh2/af3_model",
 
 def af3_runner(input_fold_list: list[dict] | list[list[dict]]) -> tuple[list[str], list[float], list[float], list[float]]:
 
-    if isinstance(input_fold_list[0], dict):
-        input_fold_list = [input_fold_list] #type: ignore
-
     results = {}
     i = 0 
 
