@@ -48,12 +48,14 @@ def parse_args():
     parser.add_argument('--seq1_type', type=str, help='a sequence to initiate with, if "random" pop_size random sequences will ')
     parser.add_argument('--seq1_len', type=int, help='seq len')
     parser.add_argument('--seq1_evol', help='does this sequence evolve [True/False]', action='store_true')
+    parser.add_argument('--seq1_rate', type=float, help='seq1 mutation rate')
     #seq2 setup
     parser.add_argument('--iseq2', type=str, help='a sequence info to initiate with "protein:random:25:evolves"')
     parser.add_argument('--seq2_init', type=str, help='the 2nd sequence to initiate with [random, randoms, or sequence]')
     parser.add_argument('--seq2_type', type=str, help='seq type [proten, rna, dna] ')
     parser.add_argument('--seq2_len', type=int, help='seq len')
     parser.add_argument('--seq2_evol', help='does this sequence evolve [True/False]', action='store_false')
+    parser.add_argument('--seq2_rate', type=float, help='seq2 mutation rate')
     parser.add_argument('--ligand', help="ligand(s) provided in slmiles of ccd format")
     #constraints
     parser.add_argument('--seq1_len_constr', type=int, help='constain seq1 length')
@@ -128,9 +130,13 @@ def parse_args():
     if args.max_seq_per_batch is None:
         args.max_seq_per_batch = args.pop_size // 2
     
-    args.beta = np.clip(args.beta, 0, 709)
+
+    #normalize mutation rates
+    args.seq1_rate = args.seq1_rate / (args.seq1_rate + args.seq2_rate)
+    args.seq2_rate = args.seq2_rate / (args.seq1_rate + args.seq2_rate)
+
     #annealing setup
-    
+    args.beta = np.clip(args.beta, 0, 709)
     if args.annealing: 
 
         if args.beta_target is None:
@@ -150,10 +156,11 @@ def parse_args():
         if args.annealing_step is None:
             args.annealing_step = round((args.beta_target - args.beta) / (args.annealing_end - args.annealing_start), 3) #linearly increas beta from ann_start to ann_end
         
+
+    # determine evoltion type from input params
     args.protein_chain = None
     args.nucleic_chain = None
 
-    # determine evoltion type from input params
     if args.seq1_type == 'protein' and args.seq2_type is None:
         args.evolution_type = 'PROTEIN_FOLD_EVOLUTION'
         args.protein_chain = 'A'
@@ -309,7 +316,8 @@ def sigmoid(x:float|int, L0=0.0, c=0.1) -> float:
     return 1 / (1 + np.exp(z))
 
 def update_beta(args):
-    args.beta += round(args.annealing_step, 3)
+    args.beta += args.annealing_step
+    round(args.beta, 3)
 
 
 

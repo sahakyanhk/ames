@@ -8,8 +8,8 @@ from datetime import datetime
 
 #AMES modules
 from evolution import Evolver
-from seqtools import Seqtools
-import pdb_contacts
+from seqtools import Seqstat
+import pdb_contacts as pc
 from psique import pypsique
 
 
@@ -73,11 +73,10 @@ def fold_evolution_simulator() -> None:
             
             seq_data = copy.deepcopy(sequence_data)
 
-            
             # if coevolution chose mutation rates for each sequece
             if args.seq2_evol:
-                mutate_seq1 = random.choices([True, False], weights=[0.25, 0.75])[0]
-                mutate_seq2 = random.choices([True, False], weights=[0.75, 0.25])[0]
+                mutate_seq1 = random.choices([True, False], weights=[args.seq1_rate, args.seq2_rate])[0]
+                mutate_seq2 = random.choices([True, False], weights=[args.seq2_rate, args.seq1_rate])[0]
                 
                 if not (mutate_seq1 or mutate_seq2):
                     mutate_seq1 = True
@@ -209,7 +208,7 @@ def extract_results(gen_i: int,
             seq_data["seq1"]["seqstat"] = protein_seqstat.n_gram_prior(seq_data["seq1"]["sequence"])
         else:
             seq_data["seq1"]["seqstat"] = rna_seqstat.n_gram_prior(seq_data["seq1"]["sequence"])
-    
+
         if args.seq2:
             if args.seq2_type == 'protein':
                 seq_data["seq2"]["seqstat"] = protein_seqstat.n_gram_prior(seq_data["seq2"]["sequence"])
@@ -258,7 +257,7 @@ def extract_results(gen_i: int,
     
         if args.seq2:
 
-            iplddt = round(pdb_contacts.interface_plddt(pdb_txt, chain1 = "A", chain2 = "B", cutoff = 7) * 0.01, 3)
+            iplddt = round(pc.interface_plddt(pdb_txt, chain1 = "A", chain2 = "B", cutoff = 7) * 0.01, 3)
 
             if args.seq2_type == 'protein':
                 protein_ss, _, _ = pypsique(pdb_txt, chain=args.protein_chain)
@@ -272,7 +271,7 @@ def extract_results(gen_i: int,
 
 
         if args.protein_chain in ["A", "B"]:
-            contact_density = pdb_contacts.contact_density(pdb_txt, 
+            contact_density = pc.contact_density(pdb_txt, 
                                                            cutoff=args.contact_cutoff,
                                                            chain=args.protein_chain, 
                                                            min_plddt=args.contact_min_plddt, 
@@ -309,10 +308,10 @@ def extract_results(gen_i: int,
 
         elif args.evolution_type in ['PROTEIN_COMPLEX_COEVOLUTION', 'PROTEIN_COMPLEX_EVOLUTION']:
 
-            chainA_density = pdb_contacts.contact_density(pdb_txt, chain="A", \
+            chainA_density = pc.contact_density(pdb_txt, chain="A", \
                                                           min_plddt=args.contact_min_plddt, \
                                                             min_seq_dist=args.contact_min_seq_dist)
-            chainB_density = pdb_contacts.contact_density(pdb_txt, chain="B", \
+            chainB_density = pc.contact_density(pdb_txt, chain="B", \
                                                           min_plddt=args.contact_min_plddt, \
                                                             min_seq_dist=args.contact_min_seq_dist)
 
@@ -366,8 +365,8 @@ def extract_results(gen_i: int,
 args = parse_args()
 
 evolver = Evolver()
-protein_seqstat = Seqtools('data/scop40_stat.json')
-rna_seqstat = Seqtools('data/rfam80_stat.json') #test! using prot stat for RNA
+protein_seqstat = Seqstat('data/scop40_stat.json')
+rna_seqstat = Seqstat('data/rfam80_stat.json') #test! using prot stat for RNA
 
 #backup if output directory exists
 if args.nobackup:
