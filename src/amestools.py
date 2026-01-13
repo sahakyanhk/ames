@@ -130,11 +130,6 @@ def parse_args():
     if args.max_seq_per_batch is None:
         args.max_seq_per_batch = args.pop_size // 2
     
-
-    #normalize mutation rates
-    args.seq1_rate = args.seq1_rate / (args.seq1_rate + args.seq2_rate)
-    args.seq2_rate = args.seq2_rate / (args.seq1_rate + args.seq2_rate)
-
     #annealing setup
     args.beta = np.clip(args.beta, 0, 709)
     if args.annealing: 
@@ -205,6 +200,16 @@ def parse_args():
         args.seq2 = False
     else:
         args.seq2 = True
+
+
+    #normalize mutation rates so the largest is 1.0
+    rate_max = max(args.seq1_rate, args.seq2_rate)
+    if args.seq2:
+        args.seq1_rate /= rate_max
+        args.seq2_rate /= rate_max
+    else: 
+        args.seq1_rate = 1.0
+        args.seq2_rate = 0.0
 
     args.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     args.uid = str(uuid.uuid4())
@@ -434,7 +439,7 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
                                      "iplddt",
                                      "iptm", 
                                      "cd",
-                                     "score",  
+                                     "score", 
                                      "sequence_data", 
                                      "mutation", 
                                      "prev_id", 
@@ -528,7 +533,7 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
     init_gen["iplddt"] = 0.0
     init_gen["iptm"] = 0.0
     init_gen["cd"] = 0.0
-    init_gen["score"] = 0.01 
+    init_gen["score"] = 0.001 
     init_gen['sequence_data'] = seq_data        
     init_gen["mutation"] = "init_gen"
     init_gen["prev_id"] = "init_gen"
