@@ -1,13 +1,13 @@
-import os
 import json
 import typing as T
 from pathlib import Path
 from collections import Counter
 import numpy as np
 
-class Seqtools:
 
-    def __init__(self, stat_from_input = "data/scop40_stat.json", seqtype = 'protein'):
+class Seqstat:
+
+    def __init__(self, stat_from = None, seqtype = 'protein'):
         
         self.kmer_stat = {}
         self.seqtype = seqtype
@@ -15,31 +15,34 @@ class Seqtools:
         assert self.seqtype in ['protein', 'rna', 'dna'], "Wrong setype, must be 'protein', 'rna' or 'dna'"
 
         # Priority: Load from FASTA if provided
-        if Path(stat_from_input).exists():  
-            if stat_from_input.split('.')[-1] == "json":
+        if stat_from == None:
+            print("No statistics file provided. \nPlease run calculate_background_distribution to generate statistics from a FASTA file or load statistics for a json.")
+            
+        elif Path(stat_from).exists():  
+            if stat_from.split('.')[-1] == "json":
                 try:
-                    print(f"Loading statistics from {stat_from_input}")
-                    with open(stat_from_input, 'r') as f:
+                    print(f"Loading statistics from {stat_from}")
+                    with open(stat_from, 'r') as f:
                         self.kmer_stat = json.load(f)
                 except Exception as e:
-                    print(f"ERROR: Could not process {stat_from_input}.\
+                    print(f"ERROR: Could not process {stat_from}.\
                           \nCalculate dictribution from a fasta file with \
                           calculate_background_distribution or provide valid JSON\n{e}")
                     pass
 
-            elif stat_from_input.split('.')[-1] in ["fasta", "fa", "fas"]:
+            elif stat_from.split('.')[-1] in ["fasta", "fa", "fas"]:
                 try:
-                    print(f"Calculating statistics from {stat_from_input}")
-                    self.calculate_background_distribution(stat_from_input)
+                    print(f"Calculating statistics from {stat_from}")
+                    self.calculate_background_distribution(stat_from)
 
                 except Exception as e:
-                    print(f"ERROR: Could not process {stat_from_input}.\
+                    print(f"ERROR: Could not process {stat_from}.\
                           \nCalculate dictribution from a fasta file with \
                           calculate_background_distribution or provide valid JSON\n{e}")
                     pass
 
         else:
-            print(f"{stat_from_input} does not exist. Run calculate_background_distribution or provide valid JSON.")
+            print(f"{stat_from} does not exist. Run calculate_background_distribution or provide valid JSON.")
 
 
     @staticmethod
@@ -115,7 +118,10 @@ class Seqtools:
         count = 0
         
         for seq in self.read_fasta_generator(fasta_path):
-            
+
+            if len(seq) < 10:
+                continue
+
             counts[1].update(self.split2kmers(seq, 1))
             counts[2].update(self.split2kmers(seq, 2))
             counts[3].update(self.split2kmers(seq, 3))

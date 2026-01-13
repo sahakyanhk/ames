@@ -75,12 +75,12 @@ def fold_evolution_simulator() -> None:
 
             # if coevolution chose mutation rates for each sequece
             if args.seq2_evol:
-                mutate_seq1 = random.choices([True, False], weights=[args.seq1_rate, args.seq2_rate])[0]
-                mutate_seq2 = random.choices([True, False], weights=[args.seq2_rate, args.seq1_rate])[0]
-                
-                if not (mutate_seq1 or mutate_seq2):
-                    mutate_seq1 = True
-
+                mutate_seq1 = False
+                mutate_seq2 = False
+                while not (mutate_seq1 or mutate_seq2):
+                    mutate_seq1 = random.choices([True, False], weights=[args.seq1_rate, 1-args.seq1_rate])[0]
+                    mutate_seq2 = random.choices([True, False], weights=[args.seq2_rate, 1-args.seq2_rate])[0]
+                    
             else: 
                 mutate_seq1 = True #either mutate_seq1 or mutate_seq2 must be true
             
@@ -215,8 +215,6 @@ def extract_results(gen_i: int,
             else:
                 seq_data["seq2"]["seqstat"] = rna_seqstat.n_gram_prior(seq_data["seq2"]["sequence"])
 
-        else:
-            iplddt = 0.0
 
         # imitate simulation without real structure prediction
         if args.prediction_engine == "simulacrum":
@@ -272,10 +270,10 @@ def extract_results(gen_i: int,
 
         if args.protein_chain in ["A", "B"]:
             contact_density = pc.contact_density(pdb_txt, 
-                                                           cutoff=args.contact_cutoff,
-                                                           chain=args.protein_chain, 
-                                                           min_plddt=args.contact_min_plddt, 
-                                                           min_seq_dist=args.contact_min_seq_dist) 
+                                                cutoff=args.contact_cutoff,
+                                                chain=args.protein_chain, 
+                                                min_plddt=args.contact_min_plddt, 
+                                                min_seq_dist=args.contact_min_seq_dist) 
                                     # for a 30aa polyA helix: min_seq_dist=3 => 51 contacts, 
                                     #                                      4 => 25 
                                     #                                      5 => 0  
@@ -365,8 +363,8 @@ def extract_results(gen_i: int,
 args = parse_args()
 
 evolver = Evolver()
-protein_seqstat = Seqstat('data/scop40_stat.json')
-rna_seqstat = Seqstat('data/rfam80_stat.json') #test! using prot stat for RNA
+protein_seqstat = Seqstat('data/pfam80_stat.json')
+rna_seqstat = Seqstat('data/rnacentral90_stat.json') 
 
 #backup if output directory exists
 if args.nobackup:
