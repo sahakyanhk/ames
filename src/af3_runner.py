@@ -7,6 +7,7 @@ Each function can be modified independently.
 
 import sys
 from pathlib import Path
+import numpy as np
 import json
 import datetime
 from typing import Optional
@@ -281,7 +282,7 @@ def create_model_runner(
 def run_inference(
     fold_input_obj: folding_input.Input,
     model_runner: run_alphafold.ModelRunner,
-    buckets: list[int] = [30, 40, 50, 60, 70, 80, 90, 100, 120, 140],
+    buckets: list[int] = [40, 50, 60, 70, 80, 90, 100, 120, 140, 150, 160],
 ) -> list:
     """
     Run inference 
@@ -360,7 +361,8 @@ def af3_runner(input_fold_list: list[dict] | list[list[dict]]) -> tuple[list[str
         plddt  = float(max_ranking_result.predicted_structure.atom_b_factor.mean()) * 0.01
         ptm = float(max_ranking_result.metadata['ptm'])
         iptm = float(max_ranking_result.metadata['iptm'])
-        
+        iptm = 0.0 if np.isnan(iptm) else iptm
+
         cif = max_ranking_result.predicted_structure.to_mmcif()
         pdb = cif2pdb(cif)
 
