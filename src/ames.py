@@ -23,6 +23,7 @@ from amestools import (parse_args,
                        batch_sequence_dataset, 
                        create_init_gen,
                        print_genlog,
+                       export_scoring,
                       )
 
 
@@ -273,38 +274,9 @@ def extract_results(gen_i: int,
                                                 cutoff=args.contact_cutoff,
                                                 chain=args.protein_chain, 
                                                 min_plddt=args.contact_min_plddt, 
-                                                min_seq_dist=args.contact_min_seq_dist) 
-                                    # for a 30aa polyA helix: min_seq_dist=3 => 51 contacts, 
-                                    #                                      4 => 25 
-                                    #                                      5 => 0  
-        else: 
-            contact_density = 0.0
-
-
-        seq1_len_penalty =  1 - sigmoid(seq_data["seq1"]["len"], args.seq1_len_constr, 0.2)
-        
-        if args.seq2:
-            seq2_len_penalty =  1 - sigmoid(seq_data["seq2"]["len"], args.seq2_len_constr, 0.2)
-        else: 
-            seq2_len_penalty = 1
-
-
-        penalty = seq1_len_penalty * seq2_len_penalty #* max_alpha_penalty * max_beta_penalty
-        
-        # adjusting score for evolution type
-        if args.evolution_type == 'PROTEIN_FOLD_EVOLUTION':
-            score = (0.4*ptm + 0.2*plddt + 0.4*contact_density) * penalty
-
-        elif args.evolution_type == 'NUCLEIC_FOLD_EVOLUTION':                
-            score = (0.8*ptm + 0.2*plddt) * penalty
-
-        elif args.evolution_type in ['PROTEIN_NUCLEIC_COEVOLUTION', 'PROTEIN_NUCLEIC_EVOLUTION']:
-            score = (0.25*iptm + 0.25*iplddt + 0.2*ptm + 0.1*plddt + 0.2*contact_density) * penalty
-
-        elif args.evolution_type == 'NUCLEIC_COMPLEX_COEVOLUTION':                
-            score = (0.3*iptm + 0.3*iplddt + 0.2*plddt + 2*plddt) * penalty
-
-        elif args.evolution_type in ['PROTEIN_COMPLEX_COEVOLUTION', 'PROTEIN_COMPLEX_EVOLUTION']:
+                                                min_seq_dist=args.contact_min_seq_dist) # for a 30aa polyA helix: min_seq_dist=3 => 51 contacts, 4 => 25, 5 => 0
+                                    
+        elif args.protein_chain == "A" and args.protein_chain == "B":
 
             chainA_density = pc.contact_density(pdb_txt, chain="A", \
                                                           min_plddt=args.contact_min_plddt, \
@@ -315,12 +287,57 @@ def extract_results(gen_i: int,
 
             contact_density = (chainA_density + chainB_density) / 2
 
-            score =  (0.25*iptm + 0.25*plddt + 0.1*ptm + 0.1*plddt + 0.3*contact_density) * penalty
+        else: 
+            contact_density = 0.0
 
+        contact_density = round(contact_density, 3)        
+
+ 
+        seq1_len_penalty =  1 - sigmoid(seq_data["seq1"]["len"], args.seq1_len_constr, 0.2)
+        
+        if args.seq2:
+            seq2_len_penalty =  1 - sigmoid(seq_data["seq2"]["len"], args.seq2_len_constr, 0.2)
+        else: 
+            seq2_len_penalty = 1
+
+        penalty = seq1_len_penalty * seq2_len_penalty #* max_alpha_penalty * max_beta_penalty
+        
+        #=============================== SCORING ===============================#
+
+        score = scoring_function(ptm, 
+                                plddt, 
+                                iptm, 
+                                iplddt, 
+                                contact_density, 
+                                penalty)
 
         score = round(score, 3)
 
-        #=============================== SCORING ===============================#
+        # if args.evolution_type == 'PROTEIN_FOLD_EVOLUTION':
+        #     score = (0.4*ptm + 0.2*plddt + 0.4*contact_density) * penalty
+
+        # elif args.evolution_type == 'NUCLEIC_FOLD_EVOLUTION':                
+        #     score = (0.8*ptm + 0.2*plddt) * penalty
+
+        # elif args.evolution_type in ['PROTEIN_NUCLEIC_COEVOLUTION', 'PROTEIN_NUCLEIC_EVOLUTION']:
+        #     score = (0.25*iptm + 0.25*iplddt + 0.2*ptm + 0.1*plddt + 0.2*contact_density) * penalty
+
+        # elif args.evolution_type == 'NUCLEIC_COMPLEX_COEVOLUTION':                
+        #     score = (0.3*iptm + 0.3*iplddt + 0.2*plddt + 2*plddt) * penalty
+
+        # elif args.evolution_type in ['PROTEIN_COMPLEX_COEVOLUTION', 'PROTEIN_COMPLEX_EVOLUTION']:
+
+        #     chainA_density = pc.contact_density(pdb_txt, chain="A", \
+        #                                                   min_plddt=args.contact_min_plddt, \
+        #                                                     min_seq_dist=args.contact_min_seq_dist)
+        #     chainB_density = pc.contact_density(pdb_txt, chain="B", \
+        #                                                   min_plddt=args.contact_min_plddt, \
+        #                                                     min_seq_dist=args.contact_min_seq_dist)
+
+        #     contact_density = (chainA_density + chainB_density) / 2
+
+        #     score =  (0.25*iptm + 0.25*plddt + 0.1*ptm + 0.1*plddt + 0.3*contact_density) * penalty
+
         #=======================================================================# 
         
         
@@ -366,6 +383,9 @@ evolver = Evolver()
 protein_seqstat = Seqstat('data/pfam80_stat.json')
 rna_seqstat = Seqstat('data/rnacentral90_stat.json') 
 
+scoring_function = export_scoring(args.evolution_type)
+
+
 #backup if output directory exists
 if args.nobackup:
     if os.path.isdir(args.outpath):
@@ -374,7 +394,9 @@ if args.nobackup:
     os.makedirs(args.outpath)
 else:
     backup_output(args.outpath)
-    
+
+
+
 if args.prediction_engine == "af3":
     from af3_runner import af3_runner as structure_predictor
     from amestools import prepare_af3_input
@@ -384,8 +406,9 @@ if args.prediction_engine == "af3":
 
 elif args.prediction_engine == "simulacrum":
     from simulacra import fold_evolution_simulacrum
-if __name__ == '__main__':
 
+
+if __name__ == '__main__':
     fold_evolution_simulator()
 
 

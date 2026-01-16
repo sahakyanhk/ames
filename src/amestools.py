@@ -14,7 +14,7 @@ from datetime import datetime
 
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     # First parser: just to get config path
     parser = argparse.ArgumentParser(description='Evolution simulation', add_help=False)
     parser.add_argument('--config', type=str, default='data/simparam.json',
@@ -544,8 +544,34 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
     return init_gen
 
 
-# def single_prot_score():
-#     return score
+def export_scoring(evolution_type) -> T.Callable:
+    
+    if evolution_type == 'PROTEIN_FOLD_EVOLUTION':
+        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, penalty):
+            score =  (0.4*ptm + 0.2*plddt + 0.4*contact_density) * penalty
+            return score
+
+    elif evolution_type == 'NUCLEIC_FOLD_EVOLUTION':   
+        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, penalty):             
+            score = (0.8*ptm + 0.2*plddt) * penalty
+            return score
+
+    elif evolution_type in ['PROTEIN_NUCLEIC_COEVOLUTION', 'PROTEIN_NUCLEIC_EVOLUTION']:
+        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, penalty):
+            score = (0.25*iptm + 0.25*iplddt + 0.2*ptm + 0.1*plddt + 0.2*contact_density) * penalty
+            return score
+
+    elif evolution_type == 'NUCLEIC_COMPLEX_COEVOLUTION':                
+        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, penalty):
+            score = (0.3*iptm + 0.3*iplddt + 0.2*plddt + 2*plddt) * penalty
+            return score
+
+    elif evolution_type in ['PROTEIN_COMPLEX_COEVOLUTION', 'PROTEIN_COMPLEX_EVOLUTION']:
+        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, penalty):
+            score =  (0.25*iptm + 0.25*plddt + 0.1*ptm + 0.1*plddt + 0.3*contact_density) * penalty
+            return score
+
+    return scoring_function
 
 
 def extract_sequence(seq_data: dict) -> str:
