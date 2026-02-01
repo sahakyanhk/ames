@@ -2,6 +2,7 @@ import json
 import typing as T
 from pathlib import Path
 from collections import Counter
+from itertools import product
 import numpy as np
 
 
@@ -44,6 +45,20 @@ class Seqstat:
         else:
             print(f"{stat_from} does not exist. Run calculate_background_distribution or provide valid JSON.")
 
+
+    def _get_alphabet(self) -> str:
+        """Return valid characters for the sequence type."""
+        if self.seqtype == "protein":
+            return "ACDEFGHIKLMNPQRSTVWY"
+        elif self.seqtype == "rna":
+            return "AUGC"
+        elif self.seqtype == "dna":
+            return "ATGC"
+
+    def _all_kmers(self, k: int) -> list:
+        """Generate all possible k-mers for the sequence type."""
+        alphabet = self._get_alphabet()
+        return [''.join(p) for p in product(alphabet, repeat=k)]
 
     @staticmethod
     def read_fasta_to_dict(fasta_path: str) -> dict:
@@ -98,10 +113,10 @@ class Seqstat:
 
     def split2kmers(self, seq: str|list, k=3) -> list:
         seqlen = len(seq)
-        assert 0 < k <= seqlen // 2, f"Invalid k={k} for {seq}" # make sure k-mer size is 2x smaller than initital string
+        assert 0 < k <= seqlen, f"Invalid k={k} for sequence of length {seqlen}"
         return [seq[i:i+k] for i in range(seqlen-k+1)]
 
-    def calcule_probabilities(self, kmers) -> dict:
+    def calculate_probabilities(self, kmers) -> dict:
         num_kmers = len(kmers)
         return {i: j/num_kmers for i, j in Counter(kmers).items()}    
 
@@ -134,34 +149,26 @@ class Seqstat:
         
         print("Filtering invalid k-mers...")
 
-        #Prune invalid k-mers
-        if self.seqtype == "protein":
-            valid_chars = set("ACDEFGHIKLMNPQRSTVWY")
-
-        elif self.seqtype == "rna":
-            valid_chars = set("AUGC")
-        
-        elif self.seqtype == "dna":
-            valid_chars = set("ATGC")
-            
+        # Prune invalid k-mers
+        valid_chars = set(self._get_alphabet())
 
         for n in [1, 2, 3]:
-
             unique_kmers = list(counts[n].keys())
-            
             for kmer in unique_kmers:
                 # Check if this specific k-mer contains any bad char
                 if set(kmer) - valid_chars:
                     del counts[n][kmer]
-        # Convert counts to probabilities
-        def counts_to_probs(counter):
-            total = sum(counter.values())
-            return {k: v / total for k, v in counter.items()}
+
+        # Convert counts to probabilities with Laplace smoothing
+        def counts_to_probs_smoothed(counter, k, pseudocount=1):
+            all_possible = self._all_kmers(k)
+            total = sum(counter.values()) + pseudocount * len(all_possible)
+            return {kmer: (counter.get(kmer, 0) + pseudocount) / total for kmer in all_possible}
 
         self.kmer_stat = {
-            'monomers': counts_to_probs(counts[1]),
-            'dimers':   counts_to_probs(counts[2]),
-            'trimers':  counts_to_probs(counts[3])
+            'monomers': counts_to_probs_smoothed(counts[1], 1),
+            'dimers':   counts_to_probs_smoothed(counts[2], 2),
+            'trimers':  counts_to_probs_smoothed(counts[3], 3)
         }
 
     def save_background_distribution(self, output_path):
@@ -178,9 +185,9 @@ class Seqstat:
 
     def n_gram_prior(self, sequence):
 
-        P1_seq = self.calcule_probabilities(self.split2kmers(sequence, 1))
-        P2_seq = self.calcule_probabilities(self.split2kmers(sequence, 2))
-        P3_seq = self.calcule_probabilities(self.split2kmers(sequence, 3))
+        P1_seq = self.calculate_probabilities(self.split2kmers(sequence, 1))
+        P2_seq = self.calculate_probabilities(self.split2kmers(sequence, 2))
+        P3_seq = self.calculate_probabilities(self.split2kmers(sequence, 3))
 
         # Calculate D_KL for each n-gram size
         energy_uni = self.kullback_leibler(P1_seq, self.kmer_stat['monomers'])
