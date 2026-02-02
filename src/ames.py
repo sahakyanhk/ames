@@ -313,35 +313,6 @@ def extract_results(gen_i: int,
 
         score = round(score, 3)
 
-        # if args.evolution_type == 'PROTEIN_FOLD_EVOLUTION':
-        #     score = (0.4*ptm + 0.2*plddt + 0.4*contact_density) * penalty
-
-        # elif args.evolution_type == 'NUCLEIC_FOLD_EVOLUTION':                
-        #     score = (0.8*ptm + 0.2*plddt) * penalty
-
-        # elif args.evolution_type in ['PROTEIN_NUCLEIC_COEVOLUTION', 'PROTEIN_NUCLEIC_EVOLUTION']:
-        #     score = (0.25*iptm + 0.25*iplddt + 0.2*ptm + 0.1*plddt + 0.2*contact_density) * penalty
-
-        # elif args.evolution_type == 'NUCLEIC_COMPLEX_COEVOLUTION':                
-        #     score = (0.3*iptm + 0.3*iplddt + 0.2*plddt + 2*plddt) * penalty
-
-        # elif args.evolution_type in ['PROTEIN_COMPLEX_COEVOLUTION', 'PROTEIN_COMPLEX_EVOLUTION']:
-
-        #     chainA_density = pc.contact_density(pdb_txt, chain="A", \
-        #                                                   min_plddt=args.contact_min_plddt, \
-        #                                                     min_seq_dist=args.contact_min_seq_dist)
-        #     chainB_density = pc.contact_density(pdb_txt, chain="B", \
-        #                                                   min_plddt=args.contact_min_plddt, \
-        #                                                     min_seq_dist=args.contact_min_seq_dist)
-
-        #     contact_density = (chainA_density + chainB_density) / 2
-
-        #     score =  (0.25*iptm + 0.25*plddt + 0.1*ptm + 0.1*plddt + 0.3*contact_density) * penalty
-
-        #=======================================================================# 
-        
-        
-        # Create the dictionary for this specific row
         row_data = {
             'gndx': gen_i,
             'id': uid, 

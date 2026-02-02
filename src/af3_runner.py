@@ -1,8 +1,6 @@
 """
-AlphaFold 3 - Modular Functions Based on Official run_alphafold.py
+AlphaFold 3 - Modular Functions Based on run_alphafold.py
 
-This breaks down the official predict_structure() function into understandable steps.
-Each function can be modified independently.
 """
 
 import sys
@@ -150,7 +148,7 @@ def create_fold_input(
                 raise ValueError("Ligand must have 'ccd_code' or 'smiles'")
         
         # Handle ions
-        elif seq_type == 'ion':
+        elif seq_type == 'ligand': # ion -> ligand, if AF3 all ions are considered ligands
             ion_id = seq_info.get('id', 'I1')
             
             json_seq = {

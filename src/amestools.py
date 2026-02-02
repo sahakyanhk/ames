@@ -43,20 +43,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('-ann_e','--annealing_end', type=int, help='generation when annealing reaches target beta')
     parser.add_argument('-ann_step','--annealing_step', type=int, help='annealing step')
     #seq1 setup
-    parser.add_argument('--iseq1', type=str, help='a sequence info to initiate with "protein:random:25:evolves"')
+    parser.add_argument('--iseq1', type=str, help='a sequence info to initiate with "protein:random:25:evolv"')
     parser.add_argument('--seq1_init', type=str, help='a sequence to initiate with [random, randoms, or sequence]')
     parser.add_argument('--seq1_type', type=str, help='a sequence to initiate with, if "random" pop_size random sequences will ')
     parser.add_argument('--seq1_len', type=int, help='seq len')
     parser.add_argument('--seq1_evol', help='does this sequence evolve [True/False]', action='store_true')
     parser.add_argument('--seq1_rate', type=float, help='seq1 mutation rate')
     #seq2 setup
-    parser.add_argument('--iseq2', type=str, help='a sequence info to initiate with "protein:random:25:evolves"')
+    parser.add_argument('--iseq2', type=str, help='a sequence info to initiate with "rna:AGUCGAUCA:25:static"')
     parser.add_argument('--seq2_init', type=str, help='the 2nd sequence to initiate with [random, randoms, or sequence]')
     parser.add_argument('--seq2_type', type=str, help='seq type [proten, rna, dna] ')
     parser.add_argument('--seq2_len', type=int, help='seq len')
     parser.add_argument('--seq2_evol', help='does this sequence evolve [True/False]', action='store_false')
     parser.add_argument('--seq2_rate', type=float, help='seq2 mutation rate')
-    parser.add_argument('--ligand', help="ligand(s) provided in slmiles of ccd format")
+    parser.add_argument('--ligand', help="ligand(s) provided in slmiles of ccd format separated with commas")
     #constraints
     parser.add_argument('--seq1_len_constr', type=int, help='constain seq1 length')
     parser.add_argument('--seq2_len_constr', type=int, help='constain seq2 length')
@@ -126,6 +126,9 @@ def parse_args() -> argparse.Namespace:
             sys.exit(1)
 
     assert args.seq1_evol == True or args.seq2_evol == True, "either seq1_evol or seq1_evol must be True"
+
+    if args.ligand != None:
+        args.ligand = args.ligand.split(",")
 
     if args.max_seq_per_batch is None:
         args.max_seq_per_batch = args.pop_size // 2
@@ -413,7 +416,7 @@ def batch_sequence_dataset(sequences: T.List[T.Tuple[str, dict]],
 
 
 def prepare_af3_input(seq_data_list, args) -> list[list[dict]]:
-    
+
     """prepares sequences in generation dataframe for af3 input"""
 
     if isinstance(seq_data_list, dict):
@@ -422,8 +425,24 @@ def prepare_af3_input(seq_data_list, args) -> list[list[dict]]:
     if args.seq2:
         inputs = [[{"type": args.seq1_type, "sequence": data["seq1"]["sequence"], "id": "A"},
                    {"type": args.seq2_type, "sequence": data["seq2"]["sequence"], "id": "B"}] for data in seq_data_list]
+
     else:
         inputs = [[{"type": args.seq1_type, "sequence": data["seq1"]["sequence"], "id": "A"}] for data in seq_data_list]
+
+
+    if args.ligand:
+
+        for inp in inputs:
+            chain_id = inp[-1]["id"]
+            for lig in args.ligand:
+                chain_id = chr(ord(chain_id) + 1)
+
+                #if lig in ccd_list:
+                inp.append({"type":"ligand", 'ccd_code': lig, "id": chain_id}) 
+        
+
+#        last_chain_id = chr(ord(last_chain_id) + 1)
+        print(inputs)
 
     return inputs
 
@@ -553,7 +572,12 @@ def export_scoring(evolution_type) -> T.Callable:
 
     elif evolution_type == 'NUCLEIC_FOLD_EVOLUTION':   
         def scoring_function(ptm, plddt, iptm, iplddt, contact_density, penalty):             
-            score = (0.8*ptm + 0.2*plddt) * penalty
+            score = (0.5*ptm + 0.5*plddt) * penalty
+            return score
+
+    elif evolution_type in ['PROTEIN_COMPLEX_COEVOLUTION', 'PROTEIN_COMPLEX_EVOLUTION']:
+        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, penalty):
+            score =  (0.25*iptm + 0.25*iplddt + 0.2*ptm + 0.1*plddt + 0.2*contact_density) * penalty
             return score
 
     elif evolution_type in ['PROTEIN_NUCLEIC_COEVOLUTION', 'PROTEIN_NUCLEIC_EVOLUTION']:
@@ -566,10 +590,7 @@ def export_scoring(evolution_type) -> T.Callable:
             score = (0.3*iptm + 0.3*iplddt + 0.2*plddt + 2*plddt) * penalty
             return score
 
-    elif evolution_type in ['PROTEIN_COMPLEX_COEVOLUTION', 'PROTEIN_COMPLEX_EVOLUTION']:
-        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, penalty):
-            score =  (0.25*iptm + 0.25*plddt + 0.1*ptm + 0.1*plddt + 0.3*contact_density) * penalty
-            return score
+
 
     return scoring_function
 
