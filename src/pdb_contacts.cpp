@@ -5,44 +5,91 @@
 #include <vector>
 #include <cmath>
 #include <sstream>
-#include <iostream>
 #include <set>
 #include <map>
+#include <unordered_map>
+#include <algorithm>
+#include <cctype>
 
 namespace py = pybind11;
+
+// ============================================================
+// Data Structures
+// ============================================================
+
+struct ResidueId {
+    char chain;
+    int number;
+    char insertionCode;
+
+    bool operator==(const ResidueId& o) const {
+        return chain == o.chain && number == o.number && insertionCode == o.insertionCode;
+    }
+    bool operator<(const ResidueId& o) const {
+        if (chain != o.chain) return chain < o.chain;
+        if (number != o.number) return number < o.number;
+        return insertionCode < o.insertionCode;
+    }
+};
+
+struct ResidueIdHash {
+    size_t operator()(const ResidueId& r) const {
+        size_t h = std::hash<char>()(r.chain);
+        h ^= std::hash<int>()(r.number) + 0x9e3779b9 + (h << 6) + (h >> 2);
+        h ^= std::hash<char>()(r.insertionCode) + 0x9e3779b9 + (h << 6) + (h >> 2);
+        return h;
+    }
+};
 
 struct Atom {
     std::string atomName;
     std::string residueName;  // 3-letter residue code (e.g., ALA, GLY)
     int residueNumber;
     char chain;
+    char insertionCode;       // PDB column 27 insertion code (' ' if none)
     double x, y, z;
-    double bfactor;  // B-factor (pLDDT for AlphaFold structures)
+    double bfactor;           // B-factor (pLDDT for AlphaFold structures)
+
+    ResidueId residueId() const {
+        return {chain, residueNumber, insertionCode};
+    }
 };
+
+struct ResidueIndex {
+    std::vector<ResidueId> residues;            // ordered, first-seen
+    std::vector<int> atomToResidue;             // atom index -> residue index
+    std::unordered_map<ResidueId, int, ResidueIdHash> residueToIndex;  // O(1) lookup
+};
+
+// ============================================================
+// Helpers
+// ============================================================
 
 // Parse ATOM/HETATM line from PDB format
 Atom parseAtomLine(const std::string& line) {
     Atom atom;
-    
+
     if (line.length() < 54) {
         throw std::runtime_error("Invalid ATOM line: too short");
     }
-    
+
     atom.atomName = line.substr(12, 4);
     atom.atomName.erase(0, atom.atomName.find_first_not_of(" "));
     atom.atomName.erase(atom.atomName.find_last_not_of(" ") + 1);
-    
+
     // Parse residue name (columns 18-20, 3-letter code)
     atom.residueName = line.substr(17, 3);
     atom.residueName.erase(0, atom.residueName.find_first_not_of(" "));
     atom.residueName.erase(atom.residueName.find_last_not_of(" ") + 1);
-    
+
     atom.chain = line[21];
     atom.residueNumber = std::stoi(line.substr(22, 4));
+    atom.insertionCode = line[26];  // column 27 (1-indexed), ' ' if none
+
     atom.x = std::stod(line.substr(30, 8));
     atom.y = std::stod(line.substr(38, 8));
     atom.z = std::stod(line.substr(46, 8));
-    
+
     // Parse B-factor (columns 61-66)
     if (line.length() >= 66) {
         try {
@@ -53,13 +100,21 @@ Atom parseAtomLine(const std::string& line) {
     } else {
         atom.bfactor = 0.0;
     }
-    
+
     return atom;
 }
 
 // Check if atom is hydrogen
+// Handles both modern (H, HA, HB2) and old-style (1H, 2HG, 3HD1) naming
 inline bool isHydrogen(const std::string& atomName) {
-    return !atomName.empty() && atomName[0] == 'H';
+    if (atomName.empty()) return false;
+    if (atomName[0] == 'H') return true;
+    // Old-style: digit prefix followed by H (e.g., 1H, 2HG)
+    size_t pos = 0;
+    while (pos < atomName.size() && std::isdigit(static_cast<unsigned char>(atomName[pos]))) {
+        pos++;
+    }
+    return pos > 0 && pos < atomName.size() && atomName[pos] == 'H';
 }
 
 // Calculate distance between two atoms
@@ -70,61 +125,97 @@ inline double calculateDistance(const Atom& a1, const Atom& a2) {
     return std::sqrt(dx*dx + dy*dy + dz*dz);
 }
 
+// Check if atom's chain matches the comma-separated chain filter.
+// e.g. "A" matches chain A, "A,B" matches chains A or B.
+// "AB" is a single chain ID (not two chains).
+// Empty filter matches all chains.
+inline bool chainMatches(char atomChain, const std::string& chainFilter) {
+    if (chainFilter.empty()) return true;
+    size_t start = 0;
+    while (start <= chainFilter.size()) {
+        size_t end = chainFilter.find(',', start);
+        if (end == std::string::npos) end = chainFilter.size();
+        if (end - start == 1 && chainFilter[start] == atomChain) return true;
+        start = end + 1;
+    }
+    return false;
+}
+
 // Parse PDB and extract atoms with optional chain filter
-std::vector<Atom> parseAtoms(const std::string& pdbText, 
+// chain: comma-separated chain IDs (e.g., "A,B" matches chains A and B)
+std::vector<Atom> parseAtoms(const std::string& pdbText,
                              bool excludeHydrogen = true,
                              const std::string& chain = "") {
     std::vector<Atom> atoms;
     std::istringstream stream(pdbText);
     std::string line;
-    
+
     while (std::getline(stream, line)) {
         if (line.substr(0, 4) == "ATOM" || line.substr(0, 6) == "HETATM") {
             try {
                 Atom atom = parseAtomLine(line);
-                
-                // Filter by chain if specified
-                if (!chain.empty() && chain[0] != atom.chain) {
+
+                if (!chainMatches(atom.chain, chain)) {
                     continue;
                 }
-                
+
                 if (!excludeHydrogen || !isHydrogen(atom.atomName)) {
                     atoms.push_back(atom);
                 }
-            } catch (const std::exception& e) {
-                std::cerr << "Warning: Could not parse line: " << line << std::endl;
+            } catch (...) {
+                // Skip unparsable ATOM/HETATM lines silently
             }
         }
     }
-    
+
     return atoms;
 }
 
+// Build residue index from atoms (O(1) lookup via unordered_map)
+ResidueIndex buildResidueIndex(const std::vector<Atom>& atoms) {
+    ResidueIndex idx;
+    for (size_t i = 0; i < atoms.size(); ++i) {
+        ResidueId rid = atoms[i].residueId();
+        auto it = idx.residueToIndex.find(rid);
+        if (it == idx.residueToIndex.end()) {
+            int newIdx = static_cast<int>(idx.residues.size());
+            idx.residues.push_back(rid);
+            idx.residueToIndex[rid] = newIdx;
+            idx.atomToResidue.push_back(newIdx);
+        } else {
+            idx.atomToResidue.push_back(it->second);
+        }
+    }
+    return idx;
+}
+
+// ============================================================
+// Distance Matrices
+// ============================================================
+
 // Calculate full distance matrix (returns NumPy array)
-py::array_t<double> calculateDistanceMatrix(const std::string& pdbText, 
+py::array_t<double> calculateDistanceMatrix(const std::string& pdbText,
                                            bool excludeHydrogen = true,
                                            const std::string& chain = "") {
     std::vector<Atom> atoms = parseAtoms(pdbText, excludeHydrogen, chain);
     size_t n = atoms.size();
-    
+
     if (n == 0) {
         throw std::runtime_error("No atoms found matching criteria");
     }
-    
-    // Allocate NumPy array
+
     py::array_t<double> result({n, n});
     auto buf = result.mutable_unchecked<2>();
-    
-    // Calculate all pairwise distances
+
     for (size_t i = 0; i < n; ++i) {
-        buf(i, i) = 0.0;  // Distance to self
+        buf(i, i) = 0.0;
         for (size_t j = i + 1; j < n; ++j) {
             double dist = calculateDistance(atoms[i], atoms[j]);
             buf(i, j) = dist;
-            buf(j, i) = dist;  // Symmetric matrix
+            buf(j, i) = dist;
         }
     }
-    
+
     return result;
 }
 
@@ -136,28 +227,26 @@ py::array_t<double> calculateInterChainDistanceMatrix(const std::string& pdbText
     if (chain1.empty() || chain2.empty()) {
         throw std::runtime_error("Both chain1 and chain2 must be specified");
     }
-    
+
     std::vector<Atom> atoms1 = parseAtoms(pdbText, excludeHydrogen, chain1);
     std::vector<Atom> atoms2 = parseAtoms(pdbText, excludeHydrogen, chain2);
-    
+
     size_t n1 = atoms1.size();
     size_t n2 = atoms2.size();
-    
+
     if (n1 == 0 || n2 == 0) {
-        throw std::runtime_error("No atoms found in one or both chains");
+        throw std::runtime_error("No atoms found in one or both chain groups");
     }
-    
-    // Allocate NumPy array (n1 x n2, not symmetric if chains differ)
+
     py::array_t<double> result({n1, n2});
     auto buf = result.mutable_unchecked<2>();
-    
-    // Calculate distances between chains
+
     for (size_t i = 0; i < n1; ++i) {
         for (size_t j = 0; j < n2; ++j) {
             buf(i, j) = calculateDistance(atoms1[i], atoms2[j]);
         }
     }
-    
+
     return result;
 }
 
@@ -166,46 +255,28 @@ py::array_t<double> calculateResidueDistanceMatrix(const std::string& pdbText,
                                                    bool excludeHydrogen = true,
                                                    const std::string& chain = "") {
     std::vector<Atom> atoms = parseAtoms(pdbText, excludeHydrogen, chain);
-    
+
     if (atoms.empty()) {
         throw std::runtime_error("No atoms found matching criteria");
     }
-    
-    // Build residue index mapping
-    std::vector<std::pair<char, int>> residues;  // (chain, residue_number)
-    std::vector<int> atomToResidue;
-    
-    for (size_t i = 0; i < atoms.size(); ++i) {
-        auto residueId = std::make_pair(atoms[i].chain, atoms[i].residueNumber);
-        
-        // Find or create residue index
-        auto it = std::find(residues.begin(), residues.end(), residueId);
-        if (it == residues.end()) {
-            residues.push_back(residueId);
-            atomToResidue.push_back(residues.size() - 1);
-        } else {
-            atomToResidue.push_back(std::distance(residues.begin(), it));
-        }
-    }
-    
-    size_t nRes = residues.size();
-    
-    // Initialize with large values
+
+    ResidueIndex ridx = buildResidueIndex(atoms);
+    size_t nRes = ridx.residues.size();
+
     py::array_t<double> result({nRes, nRes});
     auto buf = result.mutable_unchecked<2>();
-    
+
     for (size_t i = 0; i < nRes; ++i) {
         for (size_t j = 0; j < nRes; ++j) {
-            buf(i, j) = (i == j) ? 0.0 : 1e9;  // Large value for min
+            buf(i, j) = (i == j) ? 0.0 : 1e9;
         }
     }
-    
-    // Calculate minimum distance between residue pairs
+
     for (size_t i = 0; i < atoms.size(); ++i) {
         for (size_t j = i + 1; j < atoms.size(); ++j) {
-            int resI = atomToResidue[i];
-            int resJ = atomToResidue[j];
-            
+            int resI = ridx.atomToResidue[i];
+            int resJ = ridx.atomToResidue[j];
+
             if (resI != resJ) {
                 double dist = calculateDistance(atoms[i], atoms[j]);
                 if (dist < buf(resI, resJ)) {
@@ -215,7 +286,7 @@ py::array_t<double> calculateResidueDistanceMatrix(const std::string& pdbText,
             }
         }
     }
-    
+
     return result;
 }
 
@@ -227,83 +298,64 @@ py::array_t<double> calculateInterChainResidueDistanceMatrix(const std::string& 
     if (chain1.empty() || chain2.empty()) {
         throw std::runtime_error("Both chain1 and chain2 must be specified");
     }
-    
+
     std::vector<Atom> atoms1 = parseAtoms(pdbText, excludeHydrogen, chain1);
     std::vector<Atom> atoms2 = parseAtoms(pdbText, excludeHydrogen, chain2);
-    
+
     if (atoms1.empty() || atoms2.empty()) {
-        throw std::runtime_error("No atoms found in one or both chains");
+        throw std::runtime_error("No atoms found in one or both chain groups");
     }
-    
-    // Build residue lists for each chain
-    std::vector<int> residues1;
-    std::vector<int> atomToResidue1;
-    for (const auto& atom : atoms1) {
-        auto it = std::find(residues1.begin(), residues1.end(), atom.residueNumber);
-        if (it == residues1.end()) {
-            residues1.push_back(atom.residueNumber);
-            atomToResidue1.push_back(residues1.size() - 1);
-        } else {
-            atomToResidue1.push_back(std::distance(residues1.begin(), it));
-        }
-    }
-    
-    std::vector<int> residues2;
-    std::vector<int> atomToResidue2;
-    for (const auto& atom : atoms2) {
-        auto it = std::find(residues2.begin(), residues2.end(), atom.residueNumber);
-        if (it == residues2.end()) {
-            residues2.push_back(atom.residueNumber);
-            atomToResidue2.push_back(residues2.size() - 1);
-        } else {
-            atomToResidue2.push_back(std::distance(residues2.begin(), it));
-        }
-    }
-    
-    size_t nRes1 = residues1.size();
-    size_t nRes2 = residues2.size();
-    
-    // Initialize with large values
+
+    ResidueIndex ridx1 = buildResidueIndex(atoms1);
+    ResidueIndex ridx2 = buildResidueIndex(atoms2);
+
+    size_t nRes1 = ridx1.residues.size();
+    size_t nRes2 = ridx2.residues.size();
+
     py::array_t<double> result({nRes1, nRes2});
     auto buf = result.mutable_unchecked<2>();
-    
+
     for (size_t i = 0; i < nRes1; ++i) {
         for (size_t j = 0; j < nRes2; ++j) {
-            buf(i, j) = 1e9;  // Large value for min
+            buf(i, j) = 1e9;
         }
     }
-    
-    // Calculate minimum distance between residue pairs across chains
+
     for (size_t i = 0; i < atoms1.size(); ++i) {
         for (size_t j = 0; j < atoms2.size(); ++j) {
-            int resI = atomToResidue1[i];
-            int resJ = atomToResidue2[j];
-            
+            int resI = ridx1.atomToResidue[i];
+            int resJ = ridx2.atomToResidue[j];
+
             double dist = calculateDistance(atoms1[i], atoms2[j]);
             if (dist < buf(resI, resJ)) {
                 buf(resI, resJ) = dist;
             }
         }
     }
-    
+
     return result;
 }
 
-// Get atom information as Python lists (for reference)
-py::dict getAtomInfo(const std::string& pdbText, 
+// ============================================================
+// Atom / Residue Info
+// ============================================================
+
+// Get atom information as Python dictionary
+py::dict getAtomInfo(const std::string& pdbText,
                     bool excludeHydrogen = true,
                     const std::string& chain = "") {
     std::vector<Atom> atoms = parseAtoms(pdbText, excludeHydrogen, chain);
-    
+
     std::vector<std::string> atomNames;
     std::vector<std::string> residueNames;
     std::vector<int> residueNumbers;
     std::vector<char> chains;
     std::vector<double> x, y, z, bfactors;
-    
-    // Build unique residue list (ordered)
-    std::vector<std::tuple<char, int, std::string>> uniqueResidues;  // (chain, resnum, resname)
-    
+
+    // Build unique residue list (insertion-ordered)
+    std::vector<std::pair<ResidueId, std::string>> uniqueResidues;
+    std::unordered_map<ResidueId, int, ResidueIdHash> seenResidues;
+
     for (const auto& atom : atoms) {
         atomNames.push_back(atom.atomName);
         residueNames.push_back(atom.residueName);
@@ -313,25 +365,25 @@ py::dict getAtomInfo(const std::string& pdbText,
         y.push_back(atom.y);
         z.push_back(atom.z);
         bfactors.push_back(atom.bfactor);
-        
-        // Track unique residues
-        auto residueKey = std::make_tuple(atom.chain, atom.residueNumber, atom.residueName);
-        if (std::find(uniqueResidues.begin(), uniqueResidues.end(), residueKey) == uniqueResidues.end()) {
-            uniqueResidues.push_back(residueKey);
+
+        ResidueId rid = atom.residueId();
+        if (seenResidues.find(rid) == seenResidues.end()) {
+            seenResidues[rid] = static_cast<int>(uniqueResidues.size());
+            uniqueResidues.push_back({rid, atom.residueName});
         }
     }
-    
+
     // Build residue info lists
     std::vector<char> residueChains;
     std::vector<int> residueNums;
     std::vector<std::string> residueNamesList;
-    
-    for (const auto& res : uniqueResidues) {
-        residueChains.push_back(std::get<0>(res));
-        residueNums.push_back(std::get<1>(res));
-        residueNamesList.push_back(std::get<2>(res));
+
+    for (const auto& [rid, resName] : uniqueResidues) {
+        residueChains.push_back(rid.chain);
+        residueNums.push_back(rid.number);
+        residueNamesList.push_back(resName);
     }
-    
+
     // Build sequence string per chain
     std::map<char, std::string> chainSequences;
     std::map<std::string, char> threeToOne = {
@@ -343,26 +395,22 @@ py::dict getAtomInfo(const std::string& pdbText,
         {"SEC", 'U'}, {"PYL", 'O'}, {"ASX", 'B'}, {"GLX", 'Z'}, {"XLE", 'J'},
         {"UNK", 'X'}
     };
-    
-    for (const auto& res : uniqueResidues) {
-        char ch = std::get<0>(res);
-        std::string resName = std::get<2>(res);
-        
-        char oneLetterCode = 'X';  // Unknown by default
+
+    for (const auto& [rid, resName] : uniqueResidues) {
+        char oneLetterCode = 'X';
         auto it = threeToOne.find(resName);
         if (it != threeToOne.end()) {
             oneLetterCode = it->second;
         }
-        
-        chainSequences[ch] += oneLetterCode;
+        chainSequences[rid.chain] += oneLetterCode;
     }
-    
+
     // Convert chain sequences to Python dict
     py::dict sequences;
     for (const auto& [ch, seq] : chainSequences) {
         sequences[py::cast(std::string(1, ch))] = seq;
     }
-    
+
     py::dict info;
     // Atom-level info
     info["atom_names"] = atomNames;
@@ -374,7 +422,7 @@ py::dict getAtomInfo(const std::string& pdbText,
     info["z"] = z;
     info["bfactors"] = bfactors;
     info["n_atoms"] = atoms.size();
-    
+
     // Residue-level info
     info["residues"] = py::dict(
         py::arg("chains") = py::cast(residueChains),
@@ -383,12 +431,17 @@ py::dict getAtomInfo(const std::string& pdbText,
         py::arg("n_residues") = uniqueResidues.size()
     );
     info["sequences"] = sequences;
-    
+
     return info;
 }
 
+// ============================================================
+// Contact Counting
+// ============================================================
+
 // Calculate number of contacts (with chain options)
-int calculateContacts(const std::string& pdbText, 
+// pLDDT filtering is atom-level: both atoms forming a contact must have bfactor >= minPlddt
+int calculateContacts(const std::string& pdbText,
                      double cutoff = 4.5,
                      bool excludeHydrogen = true,
                      const std::string& chain = "",
@@ -396,85 +449,55 @@ int calculateContacts(const std::string& pdbText,
                      const std::string& chain2 = "",
                      double minPlddt = 0.0,
                      int minSeqDist = 0) {
-    
+
     std::vector<Atom> atoms;
     std::vector<Atom> atoms_set1, atoms_set2;
     bool interChain = false;
-    
+
     // Determine mode: single chain, inter-chain, or all chains
     if (!chain1.empty() && !chain2.empty()) {
-        // Inter-chain mode
         atoms_set1 = parseAtoms(pdbText, excludeHydrogen, chain1);
         atoms_set2 = parseAtoms(pdbText, excludeHydrogen, chain2);
         interChain = true;
     } else if (!chain.empty()) {
-        // Single chain mode
         atoms = parseAtoms(pdbText, excludeHydrogen, chain);
     } else {
-        // All chains mode
         atoms = parseAtoms(pdbText, excludeHydrogen, "");
     }
-    
-    // Build residue-level pLDDT map (max pLDDT of any atom in residue)
-    std::map<std::pair<char, int>, double> residuePlddt;
-    
+
+    // Use set of ResidueId pairs for collision-free counting
+    std::set<std::pair<ResidueId, ResidueId>> contactingPairs;
+
+    auto addContact = [&](const Atom& a1, const Atom& a2) {
+        ResidueId rid1 = a1.residueId();
+        ResidueId rid2 = a2.residueId();
+        if (rid2 < rid1) std::swap(rid1, rid2);
+        contactingPairs.insert({rid1, rid2});
+    };
+
     if (interChain) {
-        for (const auto& atom : atoms_set1) {
-            auto key = std::make_pair(atom.chain, atom.residueNumber);
-            if (residuePlddt.find(key) == residuePlddt.end() || atom.bfactor > residuePlddt[key]) {
-                residuePlddt[key] = atom.bfactor;
-            }
-        }
-        for (const auto& atom : atoms_set2) {
-            auto key = std::make_pair(atom.chain, atom.residueNumber);
-            if (residuePlddt.find(key) == residuePlddt.end() || atom.bfactor > residuePlddt[key]) {
-                residuePlddt[key] = atom.bfactor;
-            }
-        }
-    } else {
-        for (const auto& atom : atoms) {
-            auto key = std::make_pair(atom.chain, atom.residueNumber);
-            if (residuePlddt.find(key) == residuePlddt.end() || atom.bfactor > residuePlddt[key]) {
-                residuePlddt[key] = atom.bfactor;
-            }
-        }
-    }
-    
-    std::set<std::pair<int, int>> contactingPairs;
-    
-    if (interChain) {
-        // Inter-chain contacts
         for (size_t i = 0; i < atoms_set1.size(); ++i) {
             for (size_t j = 0; j < atoms_set2.size(); ++j) {
-                // Check pLDDT filter
-                auto key1 = std::make_pair(atoms_set1[i].chain, atoms_set1[i].residueNumber);
-                auto key2 = std::make_pair(atoms_set2[j].chain, atoms_set2[j].residueNumber);
-                
-                if (residuePlddt[key1] < minPlddt || residuePlddt[key2] < minPlddt) {
+                // Atom-level pLDDT filter
+                if (atoms_set1[i].bfactor < minPlddt || atoms_set2[j].bfactor < minPlddt) {
                     continue;
                 }
-                
+
                 double dist = calculateDistance(atoms_set1[i], atoms_set2[j]);
-                
+
                 if (dist < cutoff) {
-                    int id1 = static_cast<int>(atoms_set1[i].chain) * 100000 + atoms_set1[i].residueNumber;
-                    int id2 = static_cast<int>(atoms_set2[j].chain) * 100000 + atoms_set2[j].residueNumber;
-                    
-                    if (id1 > id2) std::swap(id1, id2);
-                    contactingPairs.insert({id1, id2});
+                    addContact(atoms_set1[i], atoms_set2[j]);
                 }
             }
         }
     } else {
-        // Intra-chain or all contacts
         for (size_t i = 0; i < atoms.size(); ++i) {
             for (size_t j = i + 1; j < atoms.size(); ++j) {
                 // Skip atoms from the same residue
-                if (atoms[i].residueNumber == atoms[j].residueNumber && 
-                    atoms[i].chain == atoms[j].chain) {
+                if (atoms[i].residueId() == atoms[j].residueId()) {
                     continue;
                 }
-                
+
                 // Check sequence distance (only for same chain)
                 if (atoms[i].chain == atoms[j].chain) {
                     int seqDist = std::abs(atoms[i].residueNumber - atoms[j].residueNumber);
@@ -482,32 +505,30 @@ int calculateContacts(const std::string& pdbText,
                         continue;
                     }
                 }
-                
-                // Check pLDDT filter
-                auto key1 = std::make_pair(atoms[i].chain, atoms[i].residueNumber);
-                auto key2 = std::make_pair(atoms[j].chain, atoms[j].residueNumber);
-                
-                if (residuePlddt[key1] < minPlddt || residuePlddt[key2] < minPlddt) {
+
+                // Atom-level pLDDT filter
+                if (atoms[i].bfactor < minPlddt || atoms[j].bfactor < minPlddt) {
                     continue;
                 }
-                
+
                 double dist = calculateDistance(atoms[i], atoms[j]);
-                
+
                 if (dist < cutoff) {
-                    int id1 = static_cast<int>(atoms[i].chain) * 100000 + atoms[i].residueNumber;
-                    int id2 = static_cast<int>(atoms[j].chain) * 100000 + atoms[j].residueNumber;
-                    
-                    if (id1 > id2) std::swap(id1, id2);
-                    contactingPairs.insert({id1, id2});
+                    addContact(atoms[i], atoms[j]);
                 }
             }
         }
     }
-    
+
     return contactingPairs.size();
 }
 
-// Calculate contact density
+// ============================================================
+// Contact Density
+// ============================================================
+
+// Calculate contact density (contacts per residue)
+// pLDDT filtering is atom-level in the distance computation
 double calculateContactDensity(const std::string& pdbText,
                                double cutoff = 4.5,
                                bool excludeHydrogen = true,
@@ -515,55 +536,37 @@ double calculateContactDensity(const std::string& pdbText,
                                int minSeqDist = 5,
                                double minPlddt = 0.0) {
     std::vector<Atom> atoms = parseAtoms(pdbText, excludeHydrogen, chain);
-    
+
     if (atoms.empty()) {
         throw std::runtime_error("No atoms found matching criteria");
     }
-    
-    // Build residue index mapping and pLDDT
-    std::vector<std::pair<char, int>> residues;  // (chain, residue_number)
-    std::vector<int> atomToResidue;
-    std::map<std::pair<char, int>, double> residuePlddt;
-    
-    for (size_t i = 0; i < atoms.size(); ++i) {
-        auto residueId = std::make_pair(atoms[i].chain, atoms[i].residueNumber);
-        
-        // Update pLDDT
-        if (residuePlddt.find(residueId) == residuePlddt.end() || 
-            atoms[i].bfactor > residuePlddt[residueId]) {
-            residuePlddt[residueId] = atoms[i].bfactor;
-        }
-        
-        // Find or create residue index
-        auto it = std::find(residues.begin(), residues.end(), residueId);
-        if (it == residues.end()) {
-            residues.push_back(residueId);
-            atomToResidue.push_back(residues.size() - 1);
-        } else {
-            atomToResidue.push_back(std::distance(residues.begin(), it));
-        }
-    }
-    
-    size_t nRes = residues.size();
-    
+
+    ResidueIndex ridx = buildResidueIndex(atoms);
+    size_t nRes = ridx.residues.size();
+
     if (nRes == 0) {
         return 0.0;
     }
-    
-    // Initialize distance matrix with large values
+
+    // Build residue min-distance matrix
+    // Only atom pairs where both atoms pass pLDDT contribute
     std::vector<std::vector<double>> distMatrix(nRes, std::vector<double>(nRes, 1e9));
-    
+
     for (size_t i = 0; i < nRes; ++i) {
         distMatrix[i][i] = 0.0;
     }
-    
-    // Calculate minimum distance between residue pairs
+
     for (size_t i = 0; i < atoms.size(); ++i) {
         for (size_t j = i + 1; j < atoms.size(); ++j) {
-            int resI = atomToResidue[i];
-            int resJ = atomToResidue[j];
-            
+            int resI = ridx.atomToResidue[i];
+            int resJ = ridx.atomToResidue[j];
+
             if (resI != resJ) {
+                // Atom-level pLDDT filter
+                if (atoms[i].bfactor < minPlddt || atoms[j].bfactor < minPlddt) {
+                    continue;
+                }
+
                 double dist = calculateDistance(atoms[i], atoms[j]);
                 if (dist < distMatrix[resI][resJ]) {
                     distMatrix[resI][resJ] = dist;
@@ -572,40 +575,35 @@ double calculateContactDensity(const std::string& pdbText,
             }
         }
     }
-    
+
     // Count contacts
     int contactCount = 0;
-    
+
     for (size_t i = 0; i < nRes; ++i) {
         for (size_t j = i + 1; j < nRes; ++j) {
-            // Check pLDDT filter
-            if (residuePlddt[residues[i]] < minPlddt || 
-                residuePlddt[residues[j]] < minPlddt) {
-                continue;
-            }
-            
             // Check sequence distance (only for same chain)
-            if (residues[i].first == residues[j].first) {
-                int seqDist = std::abs(residues[i].second - residues[j].second);
+            if (ridx.residues[i].chain == ridx.residues[j].chain) {
+                int seqDist = std::abs(ridx.residues[i].number - ridx.residues[j].number);
                 if (seqDist < minSeqDist) {
                     continue;
                 }
             }
-            
-            // Check distance cutoff
+
             if (distMatrix[i][j] < cutoff) {
                 contactCount++;
             }
         }
     }
-    
-    // Calculate density: C / N
-    double density = static_cast<double>(contactCount) / static_cast<double>(nRes);
-    
-    return density;
+
+    // Density: C / N
+    return static_cast<double>(contactCount) / static_cast<double>(nRes);
 }
 
-// Calculate interchain contacts
+// ============================================================
+// Interchain Contacts (convenience wrapper)
+// ============================================================
+
+// Delegates to calculateContacts
 int calculateInterchainContacts(const std::string& pdbText,
                                 const std::string& chain1,
                                 const std::string& chain2,
@@ -615,56 +613,63 @@ int calculateInterchainContacts(const std::string& pdbText,
     if (chain1.empty() || chain2.empty()) {
         throw std::runtime_error("Both chain1 and chain2 must be specified");
     }
-    
-    std::vector<Atom> atoms1 = parseAtoms(pdbText, excludeHydrogen, chain1);
-    std::vector<Atom> atoms2 = parseAtoms(pdbText, excludeHydrogen, chain2);
-    
-    if (atoms1.empty() || atoms2.empty()) {
-        throw std::runtime_error("No atoms found in one or both chains");
+    return calculateContacts(pdbText, cutoff, excludeHydrogen, "", chain1, chain2, minPlddt, 0);
+}
+
+// ============================================================
+// Ligand Contacts
+// ============================================================
+
+// Calculate ligand contact density (contacts / number of ligand atoms)
+double calculateLigandContactDensity(const std::string& pdbText,
+                                     const std::string& polymerChain,
+                                     const std::string& ligandChain,
+                                     double cutoff = 4.5,
+                                     bool excludeHydrogen = true,
+                                     double minPlddt = 0.0) {
+    if (polymerChain.empty() || ligandChain.empty()) {
+        throw std::runtime_error("Both polymer_chain and ligand_chain must be specified");
     }
-    
-    // Build residue-level pLDDT for both chains
-    std::map<std::pair<char, int>, double> residuePlddt;
-    
-    for (const auto& atom : atoms1) {
-        auto key = std::make_pair(atom.chain, atom.residueNumber);
-        if (residuePlddt.find(key) == residuePlddt.end() || atom.bfactor > residuePlddt[key]) {
-            residuePlddt[key] = atom.bfactor;
-        }
+
+    std::vector<Atom> polymerAtoms = parseAtoms(pdbText, excludeHydrogen, polymerChain);
+    std::vector<Atom> ligandAtoms = parseAtoms(pdbText, excludeHydrogen, ligandChain);
+
+    if (polymerAtoms.empty()) {
+        throw std::runtime_error("No atoms found in polymer chain(s)");
     }
-    for (const auto& atom : atoms2) {
-        auto key = std::make_pair(atom.chain, atom.residueNumber);
-        if (residuePlddt.find(key) == residuePlddt.end() || atom.bfactor > residuePlddt[key]) {
-            residuePlddt[key] = atom.bfactor;
-        }
+    if (ligandAtoms.empty()) {
+        throw std::runtime_error("No atoms found in ligand chain(s)");
     }
-    
-    std::set<std::pair<int, int>> contactingPairs;
-    
-    for (size_t i = 0; i < atoms1.size(); ++i) {
-        for (size_t j = 0; j < atoms2.size(); ++j) {
-            // Check pLDDT filter
-            auto key1 = std::make_pair(atoms1[i].chain, atoms1[i].residueNumber);
-            auto key2 = std::make_pair(atoms2[j].chain, atoms2[j].residueNumber);
-            
-            if (residuePlddt[key1] < minPlddt || residuePlddt[key2] < minPlddt) {
+
+    size_t nLigandAtoms = ligandAtoms.size();
+
+    // Count residue-pair contacts
+    std::set<std::pair<ResidueId, ResidueId>> contactingPairs;
+
+    for (size_t i = 0; i < polymerAtoms.size(); ++i) {
+        for (size_t j = 0; j < ligandAtoms.size(); ++j) {
+            // Atom-level pLDDT filter
+            if (polymerAtoms[i].bfactor < minPlddt || ligandAtoms[j].bfactor < minPlddt) {
                 continue;
             }
-            
-            double dist = calculateDistance(atoms1[i], atoms2[j]);
-            
+
+            double dist = calculateDistance(polymerAtoms[i], ligandAtoms[j]);
+
             if (dist < cutoff) {
-                int id1 = static_cast<int>(atoms1[i].chain) * 100000 + atoms1[i].residueNumber;
-                int id2 = static_cast<int>(atoms2[j].chain) * 100000 + atoms2[j].residueNumber;
-                
-                if (id1 > id2) std::swap(id1, id2);
-                contactingPairs.insert({id1, id2});
+                ResidueId rid1 = polymerAtoms[i].residueId();
+                ResidueId rid2 = ligandAtoms[j].residueId();
+                if (rid2 < rid1) std::swap(rid1, rid2);
+                contactingPairs.insert({rid1, rid2});
             }
         }
     }
-    
-    return contactingPairs.size();
+
+    return static_cast<double>(contactingPairs.size()) / static_cast<double>(nLigandAtoms);
 }
+
+// ============================================================
+// Interface pLDDT
+// ============================================================
 
 // Calculate interface pLDDT (average pLDDT of interface residues)
 double calculateInterfacePlddt(const std::string& pdbText,
@@ -675,60 +680,63 @@ double calculateInterfacePlddt(const std::string& pdbText,
     if (chain1.empty() || chain2.empty()) {
         throw std::runtime_error("Both chain1 and chain2 must be specified");
     }
-    
+
     std::vector<Atom> atoms1 = parseAtoms(pdbText, excludeHydrogen, chain1);
     std::vector<Atom> atoms2 = parseAtoms(pdbText, excludeHydrogen, chain2);
-    
+
     if (atoms1.empty() || atoms2.empty()) {
-        throw std::runtime_error("No atoms found in one or both chains");
+        throw std::runtime_error("No atoms found in one or both chain groups");
     }
-    
+
     // Find interface residues (residues with any atom within cutoff)
-    std::set<std::pair<char, int>> interfaceResidues;
-    
+    std::set<ResidueId> interfaceResidues;
+
     for (size_t i = 0; i < atoms1.size(); ++i) {
         for (size_t j = 0; j < atoms2.size(); ++j) {
             double dist = calculateDistance(atoms1[i], atoms2[j]);
-            
+
             if (dist < cutoff) {
-                interfaceResidues.insert(std::make_pair(atoms1[i].chain, atoms1[i].residueNumber));
-                interfaceResidues.insert(std::make_pair(atoms2[j].chain, atoms2[j].residueNumber));
+                interfaceResidues.insert(atoms1[i].residueId());
+                interfaceResidues.insert(atoms2[j].residueId());
             }
         }
     }
-    
+
     if (interfaceResidues.empty()) {
         return 0.0;
     }
-    
+
     // Calculate average pLDDT of all atoms in interface residues
     double sumPlddt = 0.0;
     int atomCount = 0;
-    
+
     for (const auto& atom : atoms1) {
-        auto key = std::make_pair(atom.chain, atom.residueNumber);
-        if (interfaceResidues.find(key) != interfaceResidues.end()) {
+        if (interfaceResidues.count(atom.residueId())) {
             sumPlddt += atom.bfactor;
             atomCount++;
         }
     }
-    
+
     for (const auto& atom : atoms2) {
-        auto key = std::make_pair(atom.chain, atom.residueNumber);
-        if (interfaceResidues.find(key) != interfaceResidues.end()) {
+        if (interfaceResidues.count(atom.residueId())) {
             sumPlddt += atom.bfactor;
             atomCount++;
         }
     }
-    
+
     if (atomCount == 0) {
         return 0.0;
     }
-    
+
     return sumPlddt / atomCount;
 }
 
+// ============================================================
+// Residue Pairs
+// ============================================================
+
 // Get list of contacting residue pairs with their residue names
+// pLDDT filtering is atom-level
 py::list getResiduePairs(const std::string& pdbText,
                             double cutoff = 4.5,
                             bool excludeHydrogen = true,
@@ -737,12 +745,11 @@ py::list getResiduePairs(const std::string& pdbText,
                             const std::string& chain2 = "",
                             double minPlddt = 0.0,
                             int minSeqDist = 0) {
-    
+
     std::vector<Atom> atoms;
     std::vector<Atom> atoms_set1, atoms_set2;
     bool interChain = false;
-    
-    // Determine mode: single chain, inter-chain, or all chains
+
     if (!chain1.empty() && !chain2.empty()) {
         atoms_set1 = parseAtoms(pdbText, excludeHydrogen, chain1);
         atoms_set2 = parseAtoms(pdbText, excludeHydrogen, chain2);
@@ -752,63 +759,46 @@ py::list getResiduePairs(const std::string& pdbText,
     } else {
         atoms = parseAtoms(pdbText, excludeHydrogen, "");
     }
-    
-    // Build residue-level info (pLDDT and residue name)
-    std::map<std::pair<char, int>, double> residuePlddt;
-    std::map<std::pair<char, int>, std::string> residueName;
-    
-    auto updateResidueInfo = [&](const std::vector<Atom>& atomList) {
+
+    // Build residue name map
+    std::unordered_map<ResidueId, std::string, ResidueIdHash> residueName;
+
+    auto updateResNames = [&](const std::vector<Atom>& atomList) {
         for (const auto& atom : atomList) {
-            auto key = std::make_pair(atom.chain, atom.residueNumber);
-            if (residuePlddt.find(key) == residuePlddt.end() || atom.bfactor > residuePlddt[key]) {
-                residuePlddt[key] = atom.bfactor;
-            }
-            if (residueName.find(key) == residueName.end()) {
-                residueName[key] = atom.residueName;
+            ResidueId rid = atom.residueId();
+            if (residueName.find(rid) == residueName.end()) {
+                residueName[rid] = atom.residueName;
             }
         }
     };
-    
+
     if (interChain) {
-        updateResidueInfo(atoms_set1);
-        updateResidueInfo(atoms_set2);
+        updateResNames(atoms_set1);
+        updateResNames(atoms_set2);
     } else {
-        updateResidueInfo(atoms);
+        updateResNames(atoms);
     }
-    
-    // Store unique contacting pairs with residue info
-    std::set<std::tuple<char, int, std::string, char, int, std::string>> contactSet;
-    
+
+    // Collect unique contacting pairs (canonically ordered)
+    std::set<std::pair<ResidueId, ResidueId>> contactSet;
+
     auto addContact = [&](const Atom& a1, const Atom& a2) {
-        auto key1 = std::make_pair(a1.chain, a1.residueNumber);
-        auto key2 = std::make_pair(a2.chain, a2.residueNumber);
-        
-        // Check pLDDT filter
-        if (residuePlddt[key1] < minPlddt || residuePlddt[key2] < minPlddt) {
+        // Atom-level pLDDT filter
+        if (a1.bfactor < minPlddt || a2.bfactor < minPlddt) {
             return;
         }
-        
+
         double dist = calculateDistance(a1, a2);
-        
+
         if (dist < cutoff) {
-            // Create ordered pair (smaller chain/resnum first)
-            std::string name1 = residueName[key1];
-            std::string name2 = residueName[key2];
-            
-            auto contact = std::make_tuple(a1.chain, a1.residueNumber, name1,
-                                          a2.chain, a2.residueNumber, name2);
-            auto contactRev = std::make_tuple(a2.chain, a2.residueNumber, name2,
-                                             a1.chain, a1.residueNumber, name1);
-            
-            // Add in canonical order
-            if (contact < contactRev) {
-                contactSet.insert(contact);
-            } else {
-                contactSet.insert(contactRev);
-            }
+            ResidueId rid1 = a1.residueId();
+            ResidueId rid2 = a2.residueId();
+
+            if (rid2 < rid1) std::swap(rid1, rid2);
+            contactSet.insert({rid1, rid2});
         }
     };
-    
+
     if (interChain) {
         for (size_t i = 0; i < atoms_set1.size(); ++i) {
             for (size_t j = 0; j < atoms_set2.size(); ++j) {
@@ -819,11 +809,10 @@ py::list getResiduePairs(const std::string& pdbText,
         for (size_t i = 0; i < atoms.size(); ++i) {
             for (size_t j = i + 1; j < atoms.size(); ++j) {
                 // Skip same residue
-                if (atoms[i].residueNumber == atoms[j].residueNumber && 
-                    atoms[i].chain == atoms[j].chain) {
+                if (atoms[i].residueId() == atoms[j].residueId()) {
                     continue;
                 }
-                
+
                 // Check sequence distance (same chain only)
                 if (atoms[i].chain == atoms[j].chain) {
                     int seqDist = std::abs(atoms[i].residueNumber - atoms[j].residueNumber);
@@ -831,29 +820,34 @@ py::list getResiduePairs(const std::string& pdbText,
                         continue;
                     }
                 }
-                
+
                 addContact(atoms[i], atoms[j]);
             }
         }
     }
-    
+
     // Convert to Python list of tuples
     py::list result;
-    for (const auto& contact : contactSet) {
+    for (const auto& [rid1, rid2] : contactSet) {
         result.append(py::make_tuple(
-            std::string(1, std::get<0>(contact)),  // chain1
-            std::get<1>(contact),                   // resnum1
-            std::get<2>(contact),                   // resname1
-            std::string(1, std::get<3>(contact)),  // chain2
-            std::get<4>(contact),                   // resnum2
-            std::get<5>(contact)                    // resname2
+            std::string(1, rid1.chain),
+            rid1.number,
+            residueName[rid1],
+            std::string(1, rid2.chain),
+            rid2.number,
+            residueName[rid2]
         ));
     }
-    
+
     return result;
 }
 
+// ============================================================
+// Atom Pairs
+// ============================================================
+
 // Get list of contacting atom pairs (atoms not in the same residue)
+// pLDDT filtering is atom-level
 py::list getAtomPairs(const std::string& pdbText,
                       double cutoff = 4.5,
                       bool excludeHydrogen = true,
@@ -862,12 +856,11 @@ py::list getAtomPairs(const std::string& pdbText,
                       const std::string& chain2 = "",
                       double minPlddt = 0.0,
                       int minSeqDist = 0) {
-    
+
     std::vector<Atom> atoms;
     std::vector<Atom> atoms_set1, atoms_set2;
     bool interChain = false;
-    
-    // Determine mode: single chain, inter-chain, or all chains
+
     if (!chain1.empty() && !chain2.empty()) {
         atoms_set1 = parseAtoms(pdbText, excludeHydrogen, chain1);
         atoms_set2 = parseAtoms(pdbText, excludeHydrogen, chain2);
@@ -877,59 +870,37 @@ py::list getAtomPairs(const std::string& pdbText,
     } else {
         atoms = parseAtoms(pdbText, excludeHydrogen, "");
     }
-    
-    // Build residue-level pLDDT map
-    std::map<std::pair<char, int>, double> residuePlddt;
-    
-    auto updatePlddt = [&](const std::vector<Atom>& atomList) {
-        for (const auto& atom : atomList) {
-            auto key = std::make_pair(atom.chain, atom.residueNumber);
-            if (residuePlddt.find(key) == residuePlddt.end() || atom.bfactor > residuePlddt[key]) {
-                residuePlddt[key] = atom.bfactor;
-            }
-        }
-    };
-    
-    if (interChain) {
-        updatePlddt(atoms_set1);
-        updatePlddt(atoms_set2);
-    } else {
-        updatePlddt(atoms);
-    }
-    
+
     py::list result;
-    
+
     auto addAtomPair = [&](const Atom& a1, const Atom& a2) {
         // Skip if same residue
-        if (a1.chain == a2.chain && a1.residueNumber == a2.residueNumber) {
+        if (a1.residueId() == a2.residueId()) {
             return;
         }
-        
-        // Check pLDDT filter
-        auto key1 = std::make_pair(a1.chain, a1.residueNumber);
-        auto key2 = std::make_pair(a2.chain, a2.residueNumber);
-        
-        if (residuePlddt[key1] < minPlddt || residuePlddt[key2] < minPlddt) {
+
+        // Atom-level pLDDT filter
+        if (a1.bfactor < minPlddt || a2.bfactor < minPlddt) {
             return;
         }
-        
+
         double dist = calculateDistance(a1, a2);
-        
+
         if (dist < cutoff) {
             result.append(py::make_tuple(
-                std::string(1, a1.chain),   // chain1
-                a1.residueNumber,            // resnum1
-                a1.residueName,              // resname1
-                a1.atomName,                 // atomname1
-                std::string(1, a2.chain),   // chain2
-                a2.residueNumber,            // resnum2
-                a2.residueName,              // resname2
-                a2.atomName,                 // atomname2
-                dist                         // distance
+                std::string(1, a1.chain),
+                a1.residueNumber,
+                a1.residueName,
+                a1.atomName,
+                std::string(1, a2.chain),
+                a2.residueNumber,
+                a2.residueName,
+                a2.atomName,
+                dist
             ));
         }
     };
-    
+
     if (interChain) {
         for (size_t i = 0; i < atoms_set1.size(); ++i) {
             for (size_t j = 0; j < atoms_set2.size(); ++j) {
@@ -946,67 +917,48 @@ py::list getAtomPairs(const std::string& pdbText,
                         continue;
                     }
                 }
-                
+
                 addAtomPair(atoms[i], atoms[j]);
             }
         }
     }
-    
+
     return result;
 }
 
+// ============================================================
+// Contact Order
+// ============================================================
+
 // Calculate contact order (average sequence separation of contacts, normalized by length)
 // Formula: CO = (1 / (L * N)) * sum(|i - j|) for all contacting pairs (i, j)
-// Where L is chain length, N is number of contacts
 py::dict calculateContactOrder(const std::string& pdbText,
                                double cutoff = 4.5,
                                bool excludeHydrogen = true,
                                const std::string& chain = "",
                                int minSeqDist = 1,
-                               double minPlddt = 0.0,
-                               bool absolute = false) {
+                               double minPlddt = 0.0) {
     std::vector<Atom> atoms = parseAtoms(pdbText, excludeHydrogen, chain);
-    
+
     if (atoms.empty()) {
         throw std::runtime_error("No atoms found matching criteria");
     }
-    
-    // Build residue index mapping and pLDDT
-    std::vector<std::pair<char, int>> residues;  // (chain, residue_number)
-    std::vector<int> atomToResidue;
-    std::map<std::pair<char, int>, double> residuePlddt;
-    std::map<std::pair<char, int>, int> residueSeqIndex;  // Sequential index within chain
-    std::map<char, int> chainResCount;  // Count residues per chain for sequential indexing
-    
-    for (size_t i = 0; i < atoms.size(); ++i) {
-        auto residueId = std::make_pair(atoms[i].chain, atoms[i].residueNumber);
-        
-        // Update pLDDT
-        if (residuePlddt.find(residueId) == residuePlddt.end() || 
-            atoms[i].bfactor > residuePlddt[residueId]) {
-            residuePlddt[residueId] = atoms[i].bfactor;
+
+    ResidueIndex ridx = buildResidueIndex(atoms);
+    size_t nRes = ridx.residues.size();
+
+    // Build sequential index per chain (for sequence separation)
+    std::unordered_map<ResidueId, int, ResidueIdHash> residueSeqIndex;
+    std::map<char, int> chainResCount;
+
+    for (const auto& rid : ridx.residues) {
+        if (chainResCount.find(rid.chain) == chainResCount.end()) {
+            chainResCount[rid.chain] = 0;
         }
-        
-        // Find or create residue index
-        auto it = std::find(residues.begin(), residues.end(), residueId);
-        if (it == residues.end()) {
-            residues.push_back(residueId);
-            atomToResidue.push_back(residues.size() - 1);
-            
-            // Assign sequential index within chain
-            char ch = atoms[i].chain;
-            if (chainResCount.find(ch) == chainResCount.end()) {
-                chainResCount[ch] = 0;
-            }
-            residueSeqIndex[residueId] = chainResCount[ch];
-            chainResCount[ch]++;
-        } else {
-            atomToResidue.push_back(std::distance(residues.begin(), it));
-        }
+        residueSeqIndex[rid] = chainResCount[rid.chain];
+        chainResCount[rid.chain]++;
     }
-    
-    size_t nRes = residues.size();
-    
+
     if (nRes < 2) {
         py::dict result;
         result["contact_order"] = 0.0;
@@ -1016,21 +968,26 @@ py::dict calculateContactOrder(const std::string& pdbText,
         result["sum_sequence_separation"] = 0;
         return result;
     }
-    
-    // Initialize distance matrix with large values
+
+    // Build residue min-distance matrix
+    // Only atom pairs where both atoms pass pLDDT contribute
     std::vector<std::vector<double>> distMatrix(nRes, std::vector<double>(nRes, 1e9));
-    
+
     for (size_t i = 0; i < nRes; ++i) {
         distMatrix[i][i] = 0.0;
     }
-    
-    // Calculate minimum distance between residue pairs
+
     for (size_t i = 0; i < atoms.size(); ++i) {
         for (size_t j = i + 1; j < atoms.size(); ++j) {
-            int resI = atomToResidue[i];
-            int resJ = atomToResidue[j];
-            
+            int resI = ridx.atomToResidue[i];
+            int resJ = ridx.atomToResidue[j];
+
             if (resI != resJ) {
+                // Atom-level pLDDT filter
+                if (atoms[i].bfactor < minPlddt || atoms[j].bfactor < minPlddt) {
+                    continue;
+                }
+
                 double dist = calculateDistance(atoms[i], atoms[j]);
                 if (dist < distMatrix[resI][resJ]) {
                     distMatrix[resI][resJ] = dist;
@@ -1039,66 +996,61 @@ py::dict calculateContactOrder(const std::string& pdbText,
             }
         }
     }
-    
+
     // Calculate contact order
     long long sumSeqSep = 0;
     int contactCount = 0;
-    
+
     for (size_t i = 0; i < nRes; ++i) {
         for (size_t j = i + 1; j < nRes; ++j) {
             // Only consider same-chain contacts for contact order
-            if (residues[i].first != residues[j].first) {
+            if (ridx.residues[i].chain != ridx.residues[j].chain) {
                 continue;
             }
-            
-            // Check pLDDT filter
-            if (residuePlddt[residues[i]] < minPlddt || 
-                residuePlddt[residues[j]] < minPlddt) {
-                continue;
-            }
-            
+
             // Get sequence separation using sequential indices
-            int seqI = residueSeqIndex[residues[i]];
-            int seqJ = residueSeqIndex[residues[j]];
+            int seqI = residueSeqIndex[ridx.residues[i]];
+            int seqJ = residueSeqIndex[ridx.residues[j]];
             int seqSep = std::abs(seqI - seqJ);
-            
-            // Check minimum sequence distance
+
             if (seqSep < minSeqDist) {
                 continue;
             }
-            
-            // Check distance cutoff
+
             if (distMatrix[i][j] < cutoff) {
                 sumSeqSep += seqSep;
                 contactCount++;
             }
         }
     }
-    
-    // Calculate relative contact order: CO = (1 / (L * N)) * sum(|i - j|)
-    // and absolute contact order: ACO = (1 / N) * sum(|i - j|)
+
+    // Relative CO = (1 / (L * N)) * sum(|i - j|)
+    // Absolute CO = (1 / N) * sum(|i - j|)
     double relativeContactOrder = 0.0;
     double absoluteContactOrder = 0.0;
-    
+
     if (contactCount > 0) {
         absoluteContactOrder = static_cast<double>(sumSeqSep) / contactCount;
         relativeContactOrder = absoluteContactOrder / nRes;
     }
-    
+
     py::dict result;
     result["contact_order"] = relativeContactOrder;
     result["absolute_contact_order"] = absoluteContactOrder;
     result["num_contacts"] = contactCount;
     result["num_residues"] = static_cast<int>(nRes);
     result["sum_sequence_separation"] = static_cast<int>(sumSeqSep);
-    
+
     return result;
 }
 
-// Pybind11 module definition
+// ============================================================
+// Pybind11 Module
+// ============================================================
+
 PYBIND11_MODULE(pdb_contacts, m) {
     m.doc() = "Fast PDB distance matrix and contact calculator";
-    
+
     m.def("distance_matrix", &calculateDistanceMatrix,
           py::arg("pdb_text"),
           py::arg("exclude_hydrogen") = true,
@@ -1107,24 +1059,24 @@ PYBIND11_MODULE(pdb_contacts, m) {
           "Parameters:\n"
           "  pdb_text: PDB format text\n"
           "  exclude_hydrogen: Skip hydrogen atoms (default: True)\n"
-          "  chain: Calculate only for specific chain (default: all chains)\n\n"
+          "  chain: Chain filter - comma-separated chain IDs, e.g. 'A,B' for chains A and B (default: all)\n\n"
           "Returns:\n"
           "  NxN NumPy array of distances in Angstroms");
-    
+
     m.def("interchain_distance_matrix", &calculateInterChainDistanceMatrix,
           py::arg("pdb_text"),
           py::arg("chain1"),
           py::arg("chain2"),
           py::arg("exclude_hydrogen") = true,
-          "Calculate atom-level distance matrix between two chains.\n\n"
+          "Calculate atom-level distance matrix between two chain groups.\n\n"
           "Parameters:\n"
           "  pdb_text: PDB format text\n"
-          "  chain1: First chain identifier\n"
-          "  chain2: Second chain identifier\n"
+          "  chain1: First chain group, e.g. 'A' or 'A,B'\n"
+          "  chain2: Second chain group, e.g. 'C' or 'B,C'\n"
           "  exclude_hydrogen: Skip hydrogen atoms (default: True)\n\n"
           "Returns:\n"
           "  N1xN2 NumPy array of distances (chain1 atoms x chain2 atoms)");
-    
+
     m.def("residue_distance_matrix", &calculateResidueDistanceMatrix,
           py::arg("pdb_text"),
           py::arg("exclude_hydrogen") = true,
@@ -1133,24 +1085,24 @@ PYBIND11_MODULE(pdb_contacts, m) {
           "Parameters:\n"
           "  pdb_text: PDB format text\n"
           "  exclude_hydrogen: Skip hydrogen atoms (default: True)\n"
-          "  chain: Calculate only for specific chain (default: all chains)\n\n"
+          "  chain: Chain filter - comma-separated chain IDs, e.g. 'A,B' (default: all)\n\n"
           "Returns:\n"
           "  MxM NumPy array where M is number of residues");
-    
+
     m.def("interchain_residue_distance_matrix", &calculateInterChainResidueDistanceMatrix,
           py::arg("pdb_text"),
           py::arg("chain1"),
           py::arg("chain2"),
           py::arg("exclude_hydrogen") = true,
-          "Calculate residue-level distance matrix between two chains.\n\n"
+          "Calculate residue-level distance matrix between two chain groups.\n\n"
           "Parameters:\n"
           "  pdb_text: PDB format text\n"
-          "  chain1: First chain identifier\n"
-          "  chain2: Second chain identifier\n"
+          "  chain1: First chain group, e.g. 'A' or 'A,B'\n"
+          "  chain2: Second chain group, e.g. 'C' or 'B,C'\n"
           "  exclude_hydrogen: Skip hydrogen atoms (default: True)\n\n"
           "Returns:\n"
           "  M1xM2 NumPy array (chain1 residues x chain2 residues)");
-    
+
     m.def("get_atom_info", &getAtomInfo,
           py::arg("pdb_text"),
           py::arg("exclude_hydrogen") = true,
@@ -1159,7 +1111,7 @@ PYBIND11_MODULE(pdb_contacts, m) {
           "Parameters:\n"
           "  pdb_text: PDB format text\n"
           "  exclude_hydrogen: Skip hydrogen atoms (default: True)\n"
-          "  chain: Filter by specific chain (default: all chains)\n\n"
+          "  chain: Chain filter - comma-separated chain IDs, e.g. 'A,B' (default: all)\n\n"
           "Returns:\n"
           "  Dictionary with keys:\n"
           "    Atom-level:\n"
@@ -1173,7 +1125,7 @@ PYBIND11_MODULE(pdb_contacts, m) {
           "    Residue-level:\n"
           "      - residues: Dict with chains, numbers, names, n_residues\n"
           "      - sequences: Dict mapping chain ID to one-letter sequence");
-    
+
     m.def("calculate_contacts", &calculateContacts,
           py::arg("pdb_text"),
           py::arg("cutoff") = 4.5,
@@ -1184,17 +1136,19 @@ PYBIND11_MODULE(pdb_contacts, m) {
           py::arg("min_plddt") = 0.0,
           py::arg("min_seq_dist") = 0,
           "Calculate number of residue contacts within cutoff distance.\n\n"
+          "pLDDT filtering is atom-level: both atoms forming a contact must have\n"
+          "bfactor >= min_plddt for the contact to count.\n\n"
           "Parameters:\n"
           "  pdb_text: PDB format text\n"
           "  cutoff: Distance cutoff in Angstroms (default: 4.5)\n"
           "  exclude_hydrogen: Skip hydrogen atoms (default: True)\n"
-          "  chain: Calculate contacts within a single chain\n"
-          "  chain1, chain2: Calculate contacts between two chains\n"
-          "  min_plddt: Minimum pLDDT (B-factor) threshold for residues (default: 0.0)\n"
+          "  chain: Calculate contacts within chain(s), e.g. 'A' or 'A,B'\n"
+          "  chain1, chain2: Calculate contacts between two chain groups, e.g. 'A' vs 'B,C'\n"
+          "  min_plddt: Minimum pLDDT (B-factor) for both atoms in a contact (default: 0.0)\n"
           "  min_seq_dist: Minimum sequence separation for contacts (default: 0)\n\n"
           "Returns:\n"
           "  Number of contacting residue pairs");
-    
+
     m.def("contact_density", &calculateContactDensity,
           py::arg("pdb_text"),
           py::arg("cutoff") = 4.5,
@@ -1204,18 +1158,17 @@ PYBIND11_MODULE(pdb_contacts, m) {
           py::arg("min_plddt") = 0.0,
           "Calculate contact density (contacts per residue).\n\n"
           "Formula: CD = C / N, where C is number of contacts and N is number of residues.\n"
-          "Contacts are defined as residue pairs with minimum atom distance < cutoff,\n"
-          "sequence separation >= min_seq_dist, and pLDDT >= min_plddt.\n\n"
+          "pLDDT filtering is atom-level: both atoms must have bfactor >= min_plddt.\n\n"
           "Parameters:\n"
           "  pdb_text: PDB format text\n"
           "  cutoff: Distance cutoff in Angstroms (default: 4.5)\n"
           "  exclude_hydrogen: Skip hydrogen atoms (default: True)\n"
-          "  chain: Calculate for specific chain (default: all chains)\n"
+          "  chain: Chain filter - comma-separated chain IDs, e.g. 'A,B' (default: all)\n"
           "  min_seq_dist: Minimum sequence separation (default: 5)\n"
-          "  min_plddt: Minimum pLDDT threshold (default: 0.0)\n\n"
+          "  min_plddt: Minimum pLDDT for both atoms in a contact (default: 0.0)\n\n"
           "Returns:\n"
           "  Contact density (float)");
-    
+
     m.def("interchain_contacts", &calculateInterchainContacts,
           py::arg("pdb_text"),
           py::arg("chain1"),
@@ -1223,17 +1176,37 @@ PYBIND11_MODULE(pdb_contacts, m) {
           py::arg("cutoff") = 4.5,
           py::arg("exclude_hydrogen") = true,
           py::arg("min_plddt") = 0.0,
-          "Calculate number of residue contacts between two chains.\n\n"
+          "Calculate number of residue contacts between two chain groups.\n\n"
+          "pLDDT filtering is atom-level: both atoms must have bfactor >= min_plddt.\n\n"
           "Parameters:\n"
           "  pdb_text: PDB format text\n"
-          "  chain1: First chain identifier\n"
-          "  chain2: Second chain identifier\n"
+          "  chain1: First chain group, e.g. 'A' or 'A,B'\n"
+          "  chain2: Second chain group, e.g. 'C' or 'B,C'\n"
           "  cutoff: Distance cutoff in Angstroms (default: 4.5)\n"
           "  exclude_hydrogen: Skip hydrogen atoms (default: True)\n"
-          "  min_plddt: Minimum pLDDT threshold (default: 0.0)\n\n"
+          "  min_plddt: Minimum pLDDT for both atoms in a contact (default: 0.0)\n\n"
           "Returns:\n"
           "  Number of interchain residue contacts");
-    
+
+    m.def("ligand_contact_density", &calculateLigandContactDensity,
+          py::arg("pdb_text"),
+          py::arg("polymer_chain"),
+          py::arg("ligand_chain"),
+          py::arg("cutoff") = 4.5,
+          py::arg("exclude_hydrogen") = true,
+          py::arg("min_plddt") = 0.0,
+          "Calculate ligand contact density (contacts / number of ligand atoms).\n\n"
+          "pLDDT filtering is atom-level: both atoms must have bfactor >= min_plddt.\n\n"
+          "Parameters:\n"
+          "  pdb_text: PDB format text\n"
+          "  polymer_chain: Polymer chain(s), e.g. 'A' or 'A,B' for chains A and B\n"
+          "  ligand_chain: Ligand chain(s), e.g. 'B' or 'B,C' for ATP(B) + MG(C)\n"
+          "  cutoff: Distance cutoff in Angstroms (default: 4.5)\n"
+          "  exclude_hydrogen: Skip hydrogen atoms (default: True)\n"
+          "  min_plddt: Minimum pLDDT for both atoms in a contact (default: 0.0)\n\n"
+          "Returns:\n"
+          "  Contact density: number of contacting residue pairs / number of ligand atoms");
+
     m.def("interface_plddt", &calculateInterfacePlddt,
           py::arg("pdb_text"),
           py::arg("chain1"),
@@ -1242,16 +1215,16 @@ PYBIND11_MODULE(pdb_contacts, m) {
           py::arg("exclude_hydrogen") = true,
           "Calculate average pLDDT of interface residues.\n\n"
           "Interface residues are those with any atom within cutoff distance\n"
-          "of the other chain. Returns average B-factor of all atoms in these residues.\n\n"
+          "of the other chain group. Returns average B-factor of all atoms in these residues.\n\n"
           "Parameters:\n"
           "  pdb_text: PDB format text\n"
-          "  chain1: First chain identifier\n"
-          "  chain2: Second chain identifier\n"
+          "  chain1: First chain group, e.g. 'A' or 'A,B'\n"
+          "  chain2: Second chain group, e.g. 'C' or 'B,C'\n"
           "  cutoff: Distance cutoff in Angstroms (default: 4.5)\n"
           "  exclude_hydrogen: Skip hydrogen atoms (default: True)\n\n"
           "Returns:\n"
           "  Average pLDDT (B-factor) of interface residues");
-    
+
     m.def("contact_order", &calculateContactOrder,
           py::arg("pdb_text"),
           py::arg("cutoff") = 4.5,
@@ -1259,23 +1232,18 @@ PYBIND11_MODULE(pdb_contacts, m) {
           py::arg("chain") = "",
           py::arg("min_seq_dist") = 1,
           py::arg("min_plddt") = 0.0,
-          py::arg("absolute") = false,
           "Calculate contact order (average sequence separation of contacting residues).\n\n"
-          "Contact order is a measure of the average sequence distance between\n"
-          "contacting residues, normalized by chain length. It correlates with\n"
-          "protein folding rates - lower contact order typically means faster folding.\n\n"
           "Formulas:\n"
           "  Relative CO = (1 / (L * N)) * sum(|i - j|)\n"
           "  Absolute CO = (1 / N) * sum(|i - j|)\n"
-          "Where L is chain length, N is number of contacts, |i - j| is sequence separation.\n\n"
+          "pLDDT filtering is atom-level: both atoms must have bfactor >= min_plddt.\n\n"
           "Parameters:\n"
           "  pdb_text: PDB format text\n"
           "  cutoff: Distance cutoff in Angstroms (default: 4.5)\n"
           "  exclude_hydrogen: Skip hydrogen atoms (default: True)\n"
-          "  chain: Calculate for specific chain (default: all chains)\n"
+          "  chain: Chain filter - comma-separated chain IDs, e.g. 'A,B' (default: all)\n"
           "  min_seq_dist: Minimum sequence separation to count as contact (default: 1)\n"
-          "  min_plddt: Minimum pLDDT threshold (default: 0.0)\n"
-          "  absolute: Deprecated parameter, kept for compatibility\n\n"
+          "  min_plddt: Minimum pLDDT for both atoms in a contact (default: 0.0)\n\n"
           "Returns:\n"
           "  Dictionary with keys:\n"
           "    - contact_order: Relative contact order (normalized by length)\n"
@@ -1283,7 +1251,7 @@ PYBIND11_MODULE(pdb_contacts, m) {
           "    - num_contacts: Number of contacts found\n"
           "    - num_residues: Number of residues in the chain(s)\n"
           "    - sum_sequence_separation: Total sequence separation of all contacts");
-    
+
     m.def("get_residue_pairs", &getResiduePairs,
           py::arg("pdb_text"),
           py::arg("cutoff") = 4.5,
@@ -1294,17 +1262,18 @@ PYBIND11_MODULE(pdb_contacts, m) {
           py::arg("min_plddt") = 0.0,
           py::arg("min_seq_dist") = 0,
           "Get list of contacting residue pairs with residue names.\n\n"
+          "pLDDT filtering is atom-level: both atoms must have bfactor >= min_plddt.\n\n"
           "Parameters:\n"
           "  pdb_text: PDB format text\n"
           "  cutoff: Distance cutoff in Angstroms (default: 4.5)\n"
           "  exclude_hydrogen: Skip hydrogen atoms (default: True)\n"
-          "  chain: Calculate contacts within a single chain\n"
-          "  chain1, chain2: Calculate contacts between two chains\n"
-          "  min_plddt: Minimum pLDDT threshold (default: 0.0)\n"
+          "  chain: Chain filter, e.g. 'A' or 'A,B'\n"
+          "  chain1, chain2: Calculate contacts between two chain groups\n"
+          "  min_plddt: Minimum pLDDT for both atoms in a contact (default: 0.0)\n"
           "  min_seq_dist: Minimum sequence separation for contacts (default: 0)\n\n"
           "Returns:\n"
           "  List of tuples: (chain1, resnum1, resname1, chain2, resnum2, resname2)");
-    
+
     m.def("get_atom_pairs", &getAtomPairs,
           py::arg("pdb_text"),
           py::arg("cutoff") = 4.5,
@@ -1315,13 +1284,14 @@ PYBIND11_MODULE(pdb_contacts, m) {
           py::arg("min_plddt") = 0.0,
           py::arg("min_seq_dist") = 0,
           "Get list of contacting atom pairs (atoms not in the same residue).\n\n"
+          "pLDDT filtering is atom-level: both atoms must have bfactor >= min_plddt.\n\n"
           "Parameters:\n"
           "  pdb_text: PDB format text\n"
           "  cutoff: Distance cutoff in Angstroms (default: 4.5)\n"
           "  exclude_hydrogen: Skip hydrogen atoms (default: True)\n"
-          "  chain: Calculate contacts within a single chain\n"
-          "  chain1, chain2: Calculate contacts between two chains\n"
-          "  min_plddt: Minimum pLDDT threshold (default: 0.0)\n"
+          "  chain: Chain filter, e.g. 'A' or 'A,B'\n"
+          "  chain1, chain2: Calculate contacts between two chain groups\n"
+          "  min_plddt: Minimum pLDDT for both atoms in a contact (default: 0.0)\n"
           "  min_seq_dist: Minimum sequence separation for contacts (default: 0)\n\n"
           "Returns:\n"
           "  List of tuples: (chain1, resnum1, resname1, atomname1,\n"
