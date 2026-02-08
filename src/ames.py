@@ -230,6 +230,7 @@ def extract_results(gen_i: int,
                         'iplddt': 0.0,
                         'iptm': 0.0,
                         'cd': 0.0,
+                        'lcd': 0.0,
                         'score': score,
                         'sequence_data': seq_data, 
                         'mutation': mutation,
@@ -278,12 +279,12 @@ def extract_results(gen_i: int,
                                     
         elif args.protein_chain == "A" and args.protein_chain == "B":
 
-            chainA_density = pc.contact_density(pdb_txt, chain="A", \
-                                                          min_plddt=args.contact_min_plddt, \
-                                                            min_seq_dist=args.contact_min_seq_dist)
-            chainB_density = pc.contact_density(pdb_txt, chain="B", \
-                                                          min_plddt=args.contact_min_plddt, \
-                                                            min_seq_dist=args.contact_min_seq_dist)
+            chainA_density = pc.contact_density(pdb_txt, chain="A",
+                                                         min_plddt=args.contact_min_plddt,
+                                                         min_seq_dist=args.contact_min_seq_dist)
+            chainB_density = pc.contact_density(pdb_txt, chain="B",
+                                                         min_plddt=args.contact_min_plddt,
+                                                         min_seq_dist=args.contact_min_seq_dist)
 
             contact_density = (chainA_density + chainB_density) / 2
 
@@ -292,7 +293,16 @@ def extract_results(gen_i: int,
 
         contact_density = round(contact_density, 3)        
 
- 
+        if args.ligand:
+            ligand_contact_density = pc.ligand_contact_density(pdb_txt, cutoff=5,
+                                                               polymer_chain=args.polymer_chains,
+                                                               ligand_chain=args.ligand_chains,
+                                                               min_plddt=args.contact_min_plddt)
+        else:
+            ligand_contact_density = 0.0
+
+
+        # calculate penalties
         seq1_len_penalty =  1 - sigmoid(seq_data["seq1"]["len"], args.seq1_len_constr, 0.2)
         
         if args.seq2:
@@ -305,11 +315,12 @@ def extract_results(gen_i: int,
         #=============================== SCORING ===============================#
 
         score = scoring_function(ptm, 
-                                plddt, 
-                                iptm, 
-                                iplddt, 
-                                contact_density, 
-                                penalty)
+                                 plddt, 
+                                 iptm, 
+                                 iplddt, 
+                                 contact_density, 
+                                 ligand_contact_density,
+                                 penalty) 
 
         score = round(score, 3)
 
@@ -322,6 +333,7 @@ def extract_results(gen_i: int,
             'iplddt': iplddt,
             'iptm': iptm,
             'cd': contact_density,
+            'lcd': ligand_contact_density,
             'score': score,
             'sequence_data': seq_data, 
             'mutation': mutation,

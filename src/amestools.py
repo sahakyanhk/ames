@@ -160,18 +160,19 @@ def parse_args() -> argparse.Namespace:
     args.nucleic_chain = None
 
     if args.seq1_type == 'protein' and args.seq2_type is None:
-        args.evolution_type = 'PROTEIN_FOLD_EVOLUTION'
+        args.evolution_type = 'PROTEIN_EVOLUTION'
         args.protein_chain = 'A'
-
+        
     elif args.seq1_type in ['rna', 'dna'] and args.seq2_type is None:
-        args.evolution_type = 'NUCLEIC_FOLD_EVOLUTION'
+        args.evolution_type = 'NUCLEIC_EVOLUTION'
         args.nucleic_chain = 'A'
+
 
     elif args.seq1_type == 'protein' and args.seq2_type == 'protein':
         if args.seq2_evol:
-            args.evolution_type = 'PROTEIN_COMPLEX_COEVOLUTION'
+            args.evolution_type = 'PROTEIN_PROTEIN_COEVOLUTION'
         else:
-            args.evolution_type = 'PROTEIN_COMPLEX_EVOLUTION'
+            args.evolution_type = 'PROTEIN_PROTEIN_EVOLUTION'
 
         args.protein_chain = ["A", "B"]
 
@@ -192,17 +193,36 @@ def parse_args() -> argparse.Namespace:
 
     elif args.seq1_type in ['rna', 'dna'] and args.seq2_type in ['rna', 'dna']:
         if args.seq2_evol:
-            args.evolution_type = 'NUCLEIC_COMPLEX_COEVOLUTION'
+            args.evolution_type = 'NUCLEIC_NUCLEIC_COEVOLUTION'
         else:
-            args.evolution_type = 'NUCLEIC_COMPLEX_EVOLUTION'
+            args.evolution_type = 'NUCLEIC_NUCLEIC_EVOLUTION'
 
         args.nucleic_chain = ['A','B']
 
 
-    if args.evolution_type in ['PROTEIN_FOLD_EVOLUTION', 'NUCLEIC_FOLD_EVOLUTION']:
-        args.seq2 = False
+    if args.ligand:
+        if args.evolution_type.endswith('_COEVOLUTION'):
+            args.evolution_type = args.evolution_type.replace('_COEVOLUTION', '_LIGAND_COEVOLUTION')
+        else:
+            args.evolution_type = args.evolution_type.replace('_EVOLUTION', '_LIGAND_EVOLUTION')
+    
+
+    if args.evolution_type in ['PROTEIN_EVOLUTION', 'PROTEIN_LIGAND_EVOLUTION', 
+                               'NUCLEIC_EVOLUTION', 'NUCLEIC_LIGAND_EVOLUTION']:
+        args.seq2 = False 
     else:
-        args.seq2 = True
+        args.seq2 = True #second chain exists (regardless of whether it evolves or not)
+
+    #assign prot/rna chains
+    if args.seq2:
+        args.polymer_chains = 'A,B' 
+    else:
+        args.polymer_chains = 'A'
+
+    #assign ligand chains
+    if args.ligand:
+        chain_id = args.polymer_chains.split(",")[-1]
+        args.ligand_chains = ','.join([chr(ord(chain_id) + 1 + i) for i in range(len(args.ligand))]) #asign lig chain ids sequenctially after prot/nuc chains
 
 
     #normalize mutation rates so the largest is 1.0
@@ -325,7 +345,7 @@ def sigmoid(x:float|int, L0=0.0, c=0.1) -> float:
 
 def update_beta(args):
     args.beta += args.annealing_step
-    round(args.beta, 3)
+    args.beta = round(args.beta, 3)
 
 
 
@@ -440,10 +460,6 @@ def prepare_af3_input(seq_data_list, args) -> list[list[dict]]:
                 #if lig in ccd_list:
                 inp.append({"type":"ligand", 'ccd_code': lig, "id": chain_id}) 
         
-
-#        last_chain_id = chr(ord(last_chain_id) + 1)
-        print(inputs)
-
     return inputs
 
 
@@ -458,6 +474,7 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
                                      "iplddt",
                                      "iptm", 
                                      "cd",
+                                     "lcd",
                                      "score", 
                                      "sequence_data", 
                                      "mutation", 
@@ -552,6 +569,7 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
     init_gen["iplddt"] = 0.0
     init_gen["iptm"] = 0.0
     init_gen["cd"] = 0.0
+    init_gen["lcd"] = 0.0
     init_gen["score"] = 0.001 
     init_gen['sequence_data'] = seq_data        
     init_gen["mutation"] = "init_gen"
@@ -565,31 +583,56 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
 
 def export_scoring(evolution_type) -> T.Callable:
     
-    if evolution_type == 'PROTEIN_FOLD_EVOLUTION':
-        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, penalty):
+    if evolution_type == 'PROTEIN_EVOLUTION':
+        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, ligand_contact_density,  penalty):
             score =  (0.4*ptm + 0.2*plddt + 0.4*contact_density) * penalty
             return score
 
-    elif evolution_type == 'NUCLEIC_FOLD_EVOLUTION':   
-        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, penalty):             
+    elif evolution_type == 'NUCLEIC_EVOLUTION':   
+        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, ligand_contact_density,  penalty):             
             score = (0.5*ptm + 0.5*plddt) * penalty
             return score
 
-    elif evolution_type in ['PROTEIN_COMPLEX_COEVOLUTION', 'PROTEIN_COMPLEX_EVOLUTION']:
-        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, penalty):
+    elif evolution_type in ['PROTEIN_PROTEIN_COEVOLUTION', 'PROTEIN_PROTEIN_EVOLUTION']:
+        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, ligand_contact_density,  penalty):
             score =  (0.25*iptm + 0.25*iplddt + 0.2*ptm + 0.1*plddt + 0.2*contact_density) * penalty
             return score
 
     elif evolution_type in ['PROTEIN_NUCLEIC_COEVOLUTION', 'PROTEIN_NUCLEIC_EVOLUTION']:
-        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, penalty):
+        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, ligand_contact_density,  penalty):
             score = (0.25*iptm + 0.25*iplddt + 0.2*ptm + 0.1*plddt + 0.2*contact_density) * penalty
             return score
 
-    elif evolution_type == 'NUCLEIC_COMPLEX_COEVOLUTION':                
-        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, penalty):
+    elif evolution_type == 'NUCLEIC_NUCLEIC_COEVOLUTION':                
+        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, ligand_contact_density,  penalty):
             score = (0.3*iptm + 0.3*iplddt + 0.2*plddt + 2*plddt) * penalty
             return score
 
+#######################################
+    elif evolution_type == 'PROTEIN_LIGAND_EVOLUTION':
+        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, ligand_contact_density,  penalty):
+            score =  (0.25*iptm + 0.25*iplddt + 0.2*ptm + 0.1*plddt + 0.2*contact_density + ligand_contact_density) * penalty
+            return score
+
+    elif evolution_type == 'NUCLEIC_LIGAND_EVOLUTION':   
+        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, ligand_contact_density,  penalty):             
+            score = (0.3*iptm + 0.3*iplddt + 0.2*plddt + 2*plddt + ligand_contact_density) * penalty
+            return score
+
+    elif evolution_type in ['PROTEIN_PROTEIN_LIGAND_COEVOLUTION', 'PROTEIN_PROTEIN_LIGAND_EVOLUTION']:
+        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, ligand_contact_density,  penalty):
+            score =  (0.25*iptm + 0.25*iplddt + 0.2*ptm + 0.1*plddt + 0.2*contact_density + ligand_contact_density) * penalty
+            return score
+
+    elif evolution_type in ['PROTEIN_NUCLEIC_LIGAND_COEVOLUTION', 'PROTEIN_NUCLEIC_LIGAND_EVOLUTION']:
+        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, ligand_contact_density,  penalty):
+            score = (0.25*iptm + 0.25*iplddt + 0.2*ptm + 0.1*plddt + 0.2*contact_density + ligand_contact_density) * penalty
+            return score
+
+    elif evolution_type == 'NUCLEIC_NUCLEIC_LIGAND_COEVOLUTION':                
+        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, ligand_contact_density,  penalty):
+            score = (0.3*iptm + 0.3*iplddt + 0.2*plddt + 2*plddt + ligand_contact_density) * penalty
+            return score
 
 
     return scoring_function
@@ -610,8 +653,7 @@ def extract_sequence(seq_data: dict) -> str:
 
 def print_genlog(genlog:pd.DataFrame, args) -> None:
 
-    genlog = genlog.tail(args.pop_size).drop(columns=['gndx', 'structure'], 
-                                             axis=1).round(3)
+    genlog = genlog.tail(args.pop_size).drop(columns=['gndx', 'structure']).round(3)
     
     genlog['sequence_data'] = genlog['sequence_data'].apply(extract_sequence)
     print(genlog.to_string(index=False, header=True))
