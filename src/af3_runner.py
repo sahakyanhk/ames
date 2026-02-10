@@ -13,6 +13,7 @@ from typing import Optional
 import os
 from contextlib import redirect_stdout
 
+
 # Setup paths
 ALPHAFOLD3_SRC = Path("/data/saakyanh2/WD/af3/alphafold3/src").resolve()
 ALPHAFOLD3_ROOT = Path("/data/saakyanh2/WD/af3/alphafold3").resolve()
@@ -25,6 +26,10 @@ if str(ALPHAFOLD3_ROOT) not in sys.path:
 
 import jax # type: ignore
 import run_alphafold # type: ignore
+
+import absl.flags
+absl.flags.FLAGS.mark_as_parsed()
+
 
 from alphafold3.common import folding_input # type: ignore
 from alphafold3.common import resources # type: ignore

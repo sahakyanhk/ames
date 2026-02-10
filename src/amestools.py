@@ -582,58 +582,37 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
 
 
 def export_scoring(evolution_type) -> T.Callable:
-    
-    if evolution_type == 'PROTEIN_EVOLUTION':
-        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, ligand_contact_density,  penalty):
-            score =  (0.4*ptm + 0.2*plddt + 0.4*contact_density) * penalty
-            return score
 
-    elif evolution_type == 'NUCLEIC_EVOLUTION':   
-        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, ligand_contact_density,  penalty):             
-            score = (0.5*ptm + 0.5*plddt) * penalty
-            return score
+    score_weights = {
+        'PROTEIN_EVOLUTION':                    {"ptm": 4.0, "plddt": 2.0, "iptm": 0.0, "iplddt": 0.0, "cd": 4.0, "lcd": 0.0},
+        'NUCLEIC_EVOLUTION':                    {"ptm": 5.0, "plddt": 5.0, "iptm": 0.0, "iplddt": 0.0, "cd": 0.0, "lcd": 0.0},
+        'PROTEIN_PROTEIN_EVOLUTION':            {"ptm": 2.0, "plddt": 1.0, "iptm": 2.5, "iplddt": 2.5, "cd": 2.0, "lcd": 0.0},
+        'PROTEIN_PROTEIN_COEVOLUTION':          {"ptm": 2.0, "plddt": 1.0, "iptm": 2.5, "iplddt": 2.5, "cd": 2.0, "lcd": 0.0},
+        'PROTEIN_NUCLEIC_EVOLUTION':            {"ptm": 2.0, "plddt": 1.0, "iptm": 2.5, "iplddt": 2.5, "cd": 2.0, "lcd": 0.0},
+        'PROTEIN_NUCLEIC_COEVOLUTION':          {"ptm": 2.0, "plddt": 1.0, "iptm": 2.5, "iplddt": 2.5, "cd": 2.0, "lcd": 0.0},
+        'NUCLEIC_NUCLEIC_EVOLUTION':            {"ptm": 2.0, "plddt": 2.0, "iptm": 3.0, "iplddt": 3.0, "cd": 0.0, "lcd": 0.0},
+        'NUCLEIC_NUCLEIC_COEVOLUTION':          {"ptm": 2.0, "plddt": 2.0, "iptm": 3.0, "iplddt": 3.0, "cd": 0.0, "lcd": 0.0},
+        'PROTEIN_LIGAND_EVOLUTION':             {"ptm": 1.0, "plddt": 1.0, "iptm": 2.0, "iplddt": 2.0, "cd": 2.0, "lcd": 2.0},
+        'NUCLEIC_LIGAND_EVOLUTION':             {"ptm": 1.0, "plddt": 1.0, "iptm": 2.5, "iplddt": 2.5, "cd": 0.0, "lcd": 3.0},
+        'PROTEIN_PROTEIN_LIGAND_EVOLUTION':     {"ptm": 1.0, "plddt": 1.0, "iptm": 2.0, "iplddt": 2.0, "cd": 1.5, "lcd": 2.5},
+        'PROTEIN_PROTEIN_LIGAND_COEVOLUTION':   {"ptm": 1.0, "plddt": 1.0, "iptm": 2.0, "iplddt": 2.0, "cd": 1.5, "lcd": 2.5},
+        'PROTEIN_NUCLEIC_LIGAND_EVOLUTION':     {"ptm": 1.0, "plddt": 1.0, "iptm": 2.5, "iplddt": 2.0, "cd": 1.0, "lcd": 2.5},
+        'PROTEIN_NUCLEIC_LIGAND_COEVOLUTION':   {"ptm": 1.0, "plddt": 1.0, "iptm": 2.5, "iplddt": 2.0, "cd": 1.0, "lcd": 2.5},
+        'NUCLEIC_NUCLEIC_LIGAND_EVOLUTION':     {"ptm": 1.0, "plddt": 1.0, "iptm": 2.5, "iplddt": 2.5, "cd": 0.0, "lcd": 3.0},
+        'NUCLEIC_NUCLEIC_LIGAND_COEVOLUTION':   {"ptm": 1.0, "plddt": 1.0, "iptm": 2.5, "iplddt": 2.5, "cd": 0.0, "lcd": 3.0}
+                   }       
 
-    elif evolution_type in ['PROTEIN_PROTEIN_COEVOLUTION', 'PROTEIN_PROTEIN_EVOLUTION']:
-        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, ligand_contact_density,  penalty):
-            score =  (0.25*iptm + 0.25*iplddt + 0.2*ptm + 0.1*plddt + 0.2*contact_density) * penalty
-            return score
+    w = score_weights[evolution_type]
 
-    elif evolution_type in ['PROTEIN_NUCLEIC_COEVOLUTION', 'PROTEIN_NUCLEIC_EVOLUTION']:
-        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, ligand_contact_density,  penalty):
-            score = (0.25*iptm + 0.25*iplddt + 0.2*ptm + 0.1*plddt + 0.2*contact_density) * penalty
-            return score
+    def scoring_function(ptm, plddt, iptm, iplddt, contact_density, ligand_contact_density,  penalty):
 
-    elif evolution_type == 'NUCLEIC_NUCLEIC_COEVOLUTION':                
-        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, ligand_contact_density,  penalty):
-            score = (0.3*iptm + 0.3*iplddt + 0.2*plddt + 2*plddt) * penalty
-            return score
-
-#######################################
-    elif evolution_type == 'PROTEIN_LIGAND_EVOLUTION':
-        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, ligand_contact_density,  penalty):
-            score =  (0.25*iptm + 0.25*iplddt + 0.2*ptm + 0.1*plddt + 0.2*contact_density + ligand_contact_density) * penalty
-            return score
-
-    elif evolution_type == 'NUCLEIC_LIGAND_EVOLUTION':   
-        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, ligand_contact_density,  penalty):             
-            score = (0.3*iptm + 0.3*iplddt + 0.2*plddt + 2*plddt + ligand_contact_density) * penalty
-            return score
-
-    elif evolution_type in ['PROTEIN_PROTEIN_LIGAND_COEVOLUTION', 'PROTEIN_PROTEIN_LIGAND_EVOLUTION']:
-        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, ligand_contact_density,  penalty):
-            score =  (0.25*iptm + 0.25*iplddt + 0.2*ptm + 0.1*plddt + 0.2*contact_density + ligand_contact_density) * penalty
-            return score
-
-    elif evolution_type in ['PROTEIN_NUCLEIC_LIGAND_COEVOLUTION', 'PROTEIN_NUCLEIC_LIGAND_EVOLUTION']:
-        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, ligand_contact_density,  penalty):
-            score = (0.25*iptm + 0.25*iplddt + 0.2*ptm + 0.1*plddt + 0.2*contact_density + ligand_contact_density) * penalty
-            return score
-
-    elif evolution_type == 'NUCLEIC_NUCLEIC_LIGAND_COEVOLUTION':                
-        def scoring_function(ptm, plddt, iptm, iplddt, contact_density, ligand_contact_density,  penalty):
-            score = (0.3*iptm + 0.3*iplddt + 0.2*plddt + 2*plddt + ligand_contact_density) * penalty
-            return score
-
+        score =  (w["iptm"]*iptm + 
+                  w["iplddt"]*iplddt + 
+                  w["ptm"]*ptm + 
+                  w["plddt"]*plddt + 
+                  w["cd"]*contact_density + 
+                  w["lcd"]*ligand_contact_density) * penalty
+        return score
 
     return scoring_function
 

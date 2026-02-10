@@ -291,7 +291,7 @@ def extract_results(gen_i: int,
         else: 
             contact_density = 0.0
 
-        contact_density = round(contact_density, 3)        
+        contact_density = round(contact_density, 3)  
 
         if args.ligand:
             ligand_contact_density = pc.ligand_contact_density(pdb_txt, cutoff=5,
