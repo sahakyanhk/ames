@@ -102,9 +102,7 @@ def fold_evolution_simulator() -> None:
                 mutation_data2 = "none"
 
 
-
             mutation_data = mutation_data1 + ':' + mutation_data2
-
 
 
             #check if the mutated seqeuece was already predicted
@@ -136,9 +134,8 @@ def fold_evolution_simulator() -> None:
         #predict data for the new batch        
         for headers, sequence_data_batch in batched_sequence_data:
             
-            if args.prediction_engine == "af3":
-                fold_input = prepare_af3_input(sequence_data_batch, args)
-                structure_predictor_ouptut = structure_predictor(fold_input)  # type: ignore
+            if args.prediction_engine in ["af3", "of3", "esmfold"]:
+                structure_predictor_ouptut = structure_predictor(adapter(sequence_data_batch, args))  # type: ignore
 
             elif args.prediction_engine == "simulacrum":
                 structure_predictor_ouptut = fold_evolution_simulacrum(sequence_data_batch, args) #imitate empty of3/af3 engine output
@@ -270,13 +267,13 @@ def extract_results(gen_i: int,
             iplddt = 0.0
 
 
-        if args.protein_chain in ["A", "B"]:
+        if args.protein_chain == "A" or args.protein_chain == "B":
             contact_density = pc.contact_density(pdb_txt, 
                                                 cutoff=args.contact_cutoff,
                                                 chain=args.protein_chain, 
                                                 min_plddt=args.contact_min_plddt, 
                                                 min_seq_dist=args.contact_min_seq_dist) # for a 30aa polyA helix: min_seq_dist=3 => 51 contacts, 4 => 25, 5 => 0
-                                    
+
         elif args.protein_chain == "A" and args.protein_chain == "B":
 
             chainA_density = pc.contact_density(pdb_txt, chain="A",
@@ -291,24 +288,28 @@ def extract_results(gen_i: int,
         else: 
             contact_density = 0.0
 
-        contact_density = round(contact_density, 3)  
 
         if args.ligand:
-            ligand_contact_density = pc.ligand_contact_density(pdb_txt, cutoff=5.5,
+            ligand_contact_density = pc.ligand_contact_density(pdb_txt, 
+                                                               cutoff = args.lig_contact_cutoff,
                                                                polymer_chain=args.polymer_chains,
                                                                ligand_chain=args.ligand_chains,
-                                                               min_plddt=args.contact_min_plddt)
+                                                               min_plddt=args.lig_contact_min_plddt)
             
             if args.seq2:
                 ligand_iplddt = pc.interface_plddt(pdb_txt, chain1 = args.polymer_chains, chain2 = args.ligand_chains, cutoff = 7) * 0.01 
-                iplddt = round((iplddt + ligand_iplddt) / 2, 3)
+                iplddt = (iplddt + ligand_iplddt) / 2
             else:
-                iplddt = round(ligand_iplddt, 3)
+                iplddt = ligand_iplddt
         
         else:
             ligand_contact_density = 0.0
 
+
+        contact_density = round(contact_density, 3)  
         ligand_contact_density = round(ligand_contact_density, 3)
+        iplddt = round(iplddt, 3)
+
 
         # calculate penalties
         seq1_len_penalty =  1 - sigmoid(seq_data["seq1"]["len"], args.seq1_len_constr, 0.2)
@@ -389,11 +390,16 @@ else:
 
 
 if args.prediction_engine == "af3":
+    from adapters import ames_to_af3 as adapter
     from af3_runner import af3_runner as structure_predictor
-    from amestools import prepare_af3_input
 
-# elif args.prediction_engine == "of3":
-#     from of3_runner import of3_runner as structure_predictor
+elif args.prediction_engine == "of3":
+    from adapters import ames_to_of3 as adapter
+    from of3_runner import of3_runner as structure_predictor
+
+elif args.prediction_engine == "esmfold":
+    from adapters import ames_to_esmfold as adapter
+    from esmfold_runner import esmfold_runner as structure_predictor
 
 elif args.prediction_engine == "simulacrum":
     from simulacra import fold_evolution_simulacrum
