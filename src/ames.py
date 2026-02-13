@@ -294,13 +294,21 @@ def extract_results(gen_i: int,
         contact_density = round(contact_density, 3)  
 
         if args.ligand:
-            ligand_contact_density = pc.ligand_contact_density(pdb_txt, cutoff=5,
+            ligand_contact_density = pc.ligand_contact_density(pdb_txt, cutoff=5.5,
                                                                polymer_chain=args.polymer_chains,
                                                                ligand_chain=args.ligand_chains,
                                                                min_plddt=args.contact_min_plddt)
+            
+            if args.seq2:
+                ligand_iplddt = pc.interface_plddt(pdb_txt, chain1 = args.polymer_chains, chain2 = args.ligand_chains, cutoff = 7) * 0.01 
+                iplddt = round((iplddt + ligand_iplddt) / 2, 3)
+            else:
+                iplddt = round(ligand_iplddt, 3)
+        
         else:
             ligand_contact_density = 0.0
 
+        ligand_contact_density = round(ligand_contact_density, 3)
 
         # calculate penalties
         seq1_len_penalty =  1 - sigmoid(seq_data["seq1"]["len"], args.seq1_len_constr, 0.2)

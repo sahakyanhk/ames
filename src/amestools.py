@@ -584,22 +584,22 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
 def export_scoring(evolution_type) -> T.Callable:
 
     score_weights = {
-        'PROTEIN_EVOLUTION':                    {"ptm": 4.0, "plddt": 2.0, "iptm": 0.0, "iplddt": 0.0, "cd": 4.0, "lcd": 0.0},
-        'NUCLEIC_EVOLUTION':                    {"ptm": 5.0, "plddt": 5.0, "iptm": 0.0, "iplddt": 0.0, "cd": 0.0, "lcd": 0.0},
-        'PROTEIN_PROTEIN_EVOLUTION':            {"ptm": 2.0, "plddt": 1.0, "iptm": 2.5, "iplddt": 2.5, "cd": 2.0, "lcd": 0.0},
-        'PROTEIN_PROTEIN_COEVOLUTION':          {"ptm": 2.0, "plddt": 1.0, "iptm": 2.5, "iplddt": 2.5, "cd": 2.0, "lcd": 0.0},
-        'PROTEIN_NUCLEIC_EVOLUTION':            {"ptm": 2.0, "plddt": 1.0, "iptm": 2.5, "iplddt": 2.5, "cd": 2.0, "lcd": 0.0},
-        'PROTEIN_NUCLEIC_COEVOLUTION':          {"ptm": 2.0, "plddt": 1.0, "iptm": 2.5, "iplddt": 2.5, "cd": 2.0, "lcd": 0.0},
-        'NUCLEIC_NUCLEIC_EVOLUTION':            {"ptm": 2.0, "plddt": 2.0, "iptm": 3.0, "iplddt": 3.0, "cd": 0.0, "lcd": 0.0},
-        'NUCLEIC_NUCLEIC_COEVOLUTION':          {"ptm": 2.0, "plddt": 2.0, "iptm": 3.0, "iplddt": 3.0, "cd": 0.0, "lcd": 0.0},
-        'PROTEIN_LIGAND_EVOLUTION':             {"ptm": 1.0, "plddt": 1.0, "iptm": 2.0, "iplddt": 2.0, "cd": 2.0, "lcd": 2.0},
-        'NUCLEIC_LIGAND_EVOLUTION':             {"ptm": 1.0, "plddt": 1.0, "iptm": 2.5, "iplddt": 2.5, "cd": 0.0, "lcd": 3.0},
-        'PROTEIN_PROTEIN_LIGAND_EVOLUTION':     {"ptm": 1.0, "plddt": 1.0, "iptm": 2.0, "iplddt": 2.0, "cd": 1.5, "lcd": 2.5},
-        'PROTEIN_PROTEIN_LIGAND_COEVOLUTION':   {"ptm": 1.0, "plddt": 1.0, "iptm": 2.0, "iplddt": 2.0, "cd": 1.5, "lcd": 2.5},
-        'PROTEIN_NUCLEIC_LIGAND_EVOLUTION':     {"ptm": 1.0, "plddt": 1.0, "iptm": 2.5, "iplddt": 2.0, "cd": 1.0, "lcd": 2.5},
-        'PROTEIN_NUCLEIC_LIGAND_COEVOLUTION':   {"ptm": 1.0, "plddt": 1.0, "iptm": 2.5, "iplddt": 2.0, "cd": 1.0, "lcd": 2.5},
-        'NUCLEIC_NUCLEIC_LIGAND_EVOLUTION':     {"ptm": 1.0, "plddt": 1.0, "iptm": 2.5, "iplddt": 2.5, "cd": 0.0, "lcd": 3.0},
-        'NUCLEIC_NUCLEIC_LIGAND_COEVOLUTION':   {"ptm": 1.0, "plddt": 1.0, "iptm": 2.5, "iplddt": 2.5, "cd": 0.0, "lcd": 3.0}
+        'PROTEIN_EVOLUTION':                    {"ptm": 0.4, "plddt": 0.2, "iptm": 0.0,  "iplddt": 0.0,  "cd": 0.4, "lcd": 0.0},
+        'NUCLEIC_EVOLUTION':                    {"ptm": 0.5, "plddt": 0.5, "iptm": 0.0,  "iplddt": 0.0,  "cd": 0.0,  "lcd": 0.0},
+        'PROTEIN_PROTEIN_EVOLUTION':            {"ptm": 0.2, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.25, "cd": 0.2, "lcd": 0.0},
+        'PROTEIN_PROTEIN_COEVOLUTION':          {"ptm": 0.2, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.25, "cd": 0.2, "lcd": 0.0},
+        'PROTEIN_NUCLEIC_EVOLUTION':            {"ptm": 0.2, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.25, "cd": 0.2, "lcd": 0.0},
+        'PROTEIN_NUCLEIC_COEVOLUTION':          {"ptm": 0.2, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.25, "cd": 0.2, "lcd": 0.0},
+        'NUCLEIC_NUCLEIC_EVOLUTION':            {"ptm": 0.2, "plddt": 0.2, "iptm": 0.3, "iplddt": 0.3, "cd": 0.0, "lcd": 0.0},
+        'NUCLEIC_NUCLEIC_COEVOLUTION':          {"ptm": 0.2, "plddt": 0.2, "iptm": 0.3, "iplddt": 0.3, "cd": 0.0, "lcd": 0.0},
+        'PROTEIN_LIGAND_EVOLUTION':             {"ptm": 0.1, "plddt": 0.1, "iptm": 0.2, "iplddt": 0.2, "cd": 0.2, "lcd": 0.2},
+        'NUCLEIC_LIGAND_EVOLUTION':             {"ptm": 0.1, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.3, "cd": 0.0, "lcd": 0.25},
+        'PROTEIN_PROTEIN_LIGAND_EVOLUTION':     {"ptm": 0.1, "plddt": 0.1, "iptm": 0.2, "iplddt": 0.2, "cd": 0.2, "lcd": 0.2},
+        'PROTEIN_PROTEIN_LIGAND_COEVOLUTION':   {"ptm": 0.1, "plddt": 0.1, "iptm": 0.2, "iplddt": 0.2, "cd": 0.2, "lcd": 0.2},
+        'PROTEIN_NUCLEIC_LIGAND_EVOLUTION':     {"ptm": 0.1, "plddt": 0.1, "iptm": 0.2, "iplddt": 0.2, "cd": 0.2, "lcd": 0.2},
+        'PROTEIN_NUCLEIC_LIGAND_COEVOLUTION':   {"ptm": 0.1, "plddt": 0.1, "iptm": 0.2, "iplddt": 0.2, "cd": 0.2, "lcd": 0.2},
+        'NUCLEIC_NUCLEIC_LIGAND_EVOLUTION':     {"ptm": 0.1, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.3, "cd": 0.0, "lcd": 0.25},
+        'NUCLEIC_NUCLEIC_LIGAND_COEVOLUTION':   {"ptm": 0.1, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.3, "cd": 0.0, "lcd": 0.25}
                    }       
 
     w = score_weights[evolution_type]
