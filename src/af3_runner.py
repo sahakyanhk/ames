@@ -13,6 +13,11 @@ from typing import Optional
 import os
 from contextlib import redirect_stdout
 
+from rdkit import RDLogger
+
+lg = RDLogger.logger()
+lg.setLevel(RDLogger.CRITICAL)
+
 
 # Setup paths
 ALPHAFOLD3_SRC = Path("/data/saakyanh2/WD/af3/alphafold3/src").resolve()
@@ -315,6 +320,8 @@ def run_inference(
 
 model_runner = create_model_runner(model_dir="/data/saakyanh2/af3_model",
                                        num_diffusion_samples=3) #NUMBER_OF_DIFFUSIONS
+
+
 
 
 def af3_runner(input_fold_list: list[dict] | list[list[dict]]) -> tuple[list[str], list[float], list[float], list[float]]:
