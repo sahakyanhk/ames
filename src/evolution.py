@@ -165,14 +165,11 @@ class Evolver:
                 raise ValueError(f"unknown sequence_type: {sequence_type!r}; expected 'protein', 'rna' or 'dna'")
 
 
-            # if seq_len < 6:
-            #     mutation = 'd'
-
-
-            # else:
-            
-            mutation_position = random.choice(range(seq_len))
-            mutation =  random.choices(mutation_types, weights=p)[0]
+            if seq_len < 6:
+                mutation = 'd'
+            else:
+                mutation_position = random.choice(range(seq_len))
+                mutation =  random.choices(mutation_types, weights=p)[0]
             
             if mutation in alphabet:
                 sequence_mutated = sequence[:mutation_position] + mutation + sequence[mutation_position + 1:]
@@ -199,7 +196,8 @@ class Evolver:
                 mutation_info = f'{sequence[mutation_position]}{mutation_position+1}/{mutation}'
 
             elif mutation =='%' and seq_len > 5: #partial deletion
-                deletion_len = random.choice(range(2, int(seq_len/2))) #what is the probable deletion lenght?
+                mutation_position = random.choice(range(seq_len-2))
+                deletion_len = random.choice(range(1, seq_len - mutation_position))
                 sequence_mutated = sequence[:mutation_position] + sequence[mutation_position + deletion_len:]
                 mutation_info = f'{sequence[mutation_position]}{mutation_position+1}%{deletion_len}'
 
@@ -221,21 +219,21 @@ class Evolver:
 
 
 
-    def select(self, input_new_gen, input_init_gen, pop_size:int, selection_mode:str = 'week', norepeat:bool = False, beta = 1): 
+    def select(self, input_new_gen, input_init_gen, pop_size:int, selection_mode:str = 'weak', norepeat:bool = False, beta = 1): 
 
         mixed_pop = pd.concat([input_new_gen, input_init_gen], axis=0, ignore_index=True) 
 
-        if norepeat and len(mixed_pop['sequence'].unique()) == pop_size:
+        if norepeat and len(mixed_pop['sequence'].unique()) >= pop_size:
             mixed_pop = mixed_pop.drop_duplicates(subset=['sequence'])
 
-        if selection_mode == "strong":
+        elif selection_mode == "strong":
             new_init_gen = mixed_pop.sort_values('score', ascending=False).head(pop_size)
 
-        if selection_mode == "weak":
+        elif selection_mode == "weak":
             weights = np.array(np.exp(beta * mixed_pop.score) / np.array(np.exp(beta * mixed_pop.score)).sum())
             new_init_gen = mixed_pop.sample(n=pop_size, weights=weights, replace=(not norepeat)).sort_values('score', ascending=False)
         
-        if selection_mode == "weak2":
+        elif selection_mode == "weak2":
             weights = np.array((mixed_pop.score) / ((mixed_pop.score).sum()))
             new_init_gen = mixed_pop.sample(n=pop_size, weights=weights, replace=(not norepeat)).sort_values('score', ascending=False)
             print(weights.sum())
