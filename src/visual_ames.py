@@ -7,19 +7,9 @@ import ast
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
-
-#import cairosvg 
-#from moviepy import ImageClip, concatenate_videoclips
-
 from amestools import read_header, ungzip_str
 from pdbutils import extract_backbone
 from seqtools import Seqstat
-
-### old ungzip remove when done
-# import gzip
-# def ungzip_str(string):
-#     compressed = gzip.decompress(ast.literal_eval(string))
-#     return compressed.decode('utf-8')
 
 
 parser = argparse.ArgumentParser(description="Analyse PFES")
@@ -35,6 +25,7 @@ parser.add_argument('--traj', action='store_true', )
 
 parser.add_argument('--noplots', action='store_false', )
 parser.add_argument('--notraj', action='store_false', )
+parser.add_argument('--nopdb', action='store_false', )
 
 
 args = parser.parse_args()
@@ -47,12 +38,13 @@ protein_seqstat = Seqstat('data/pfam80_stat.json')
 rna_seqstat = Seqstat('data/rnacentral90_stat.json') #test! using prot stat for RNA
 seqstat = {"protein": protein_seqstat, "rna": rna_seqstat}
 
+
 def sorted_alphanumeric(data):
     convert = lambda text: int(text) if text.isdigit() else text.lower()
     alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key) ]
     return sorted(data, key=alphanum_key)
 
-def extract_lineage(log: pd.DataFrame) -> pd.DataFrame:
+def extract_lineage(log) -> pd.DataFrame:
     traj_len = len(log)
     #pop_size = len(log[log.gndx == 'gndx0'])
 
@@ -89,6 +81,8 @@ def extract_lineage(log: pd.DataFrame) -> pd.DataFrame:
         ]].iloc[-1]}
 {json.dumps(ltail.sequence_data.iloc[-1], indent=4)}
 """)
+    lineage["lndx"] = lineage.reset_index().index
+    lineage["evolrate"] = lineage.lndx / lineage.gndx  
     return lineage
 
 def extract_sequences(log):
@@ -113,7 +107,6 @@ def make_backbone_traj(frames: list[str], trajout: str = "backbone_traj.pdb"):
 def extract_structures(log, outdir):
     
     structures_path = os.path.join(outdir, 'structures')
-    trajectory_path = os.path.join(outdir, 'backbone_traj.pdb')
 
     os.makedirs(structures_path, exist_ok=True)
     
@@ -124,19 +117,37 @@ def extract_structures(log, outdir):
         try:
 
             structure_txt = ungzip_str(gziped_structure)
-            with open(f"{structures_path}/{id}.pdb", "w") as f:
+            with open(f"{structures_path}/{id:04d}.pdb", "w") as f:
                 f.write(structure_txt)
 
             decoded_frames.append(structure_txt)
 
         except Exception as e:
-            print(id, "failed\n", e)
-
-    print("#=== preparing backbone traj")
-    make_backbone_traj(decoded_frames, trajectory_path)
+            print(f"{id} failed\n{e}")
 
 
 #======================= make separate plots =======================#
+
+labels = {
+    "gndx": "Generation index",
+    "lndx": "Lineage index",
+    "evolrate": "Evolution rate",
+    "score": "Score",
+    "ptm": "pTM", 
+    "plddt": "pLDDT", 
+    "iptm": "ipTM",  
+    "iplddt": "ipLDDT",  
+    "cd": "Contact Density", 
+    "lcd": "Ligand Contact Density",
+    "beta": "Selection strength",
+    "penalty": "Pentaly",
+    "seq1_len": "Seq1 len",
+    "seq2_len": "Seq2 len",
+    "seq1_stat": "Seq1 ngram loss",
+    "seq2_stat": "Seq2 ngram loss"
+        }
+
+
 def make_plots(log, bestlog, lineage):
 
     ms=0.1
@@ -145,9 +156,11 @@ def make_plots(log, bestlog, lineage):
 
     os.makedirs(plotdir, exist_ok=True)
     for colname in log.keys(): 
-        if colname in ['beta', 'plddt', 'ptm', 'iplddt', 'iptm', 'cd', 'score',
+        if colname in ['beta', 'plddt', 'ptm', 'iplddt', 'iptm', 
+                       'cd', 'lcd', 'score',
                        'seq1_len', 'seq1_stat',
                        'seq2_len', 'seq2_stat']:
+                
                 fig, ax1 = plt.subplots(figsize=(9, 3))
                 ax1.plot(log[colname],'.', markersize=ms,    color='silver', label='all mutations')
                 ax1.plot(bestlog[colname],'-', linewidth=lw, label='best of the generation')
@@ -163,86 +176,123 @@ def make_plots(log, bestlog, lineage):
                 fig.clf()
 
 #======================= Summary plot =======================#
-def make_summary_plot(log, bestlog, lineage, sim_param):
-    
+def make_summary_plot(log, bestlog, lineage, simparam):
+    fig, axs = plt.subplots(3,2, figsize=(10, 8))
+    fig.suptitle(None) # type: ignore
+
     ms=0.1
     lw=1.0
     dpi=500
+    markerscale=25
+    
+    def summ_plot(axs, colname, last_row = False):
+        axs.plot(log[colname], '.', markersize=ms,    color='silver', label='all mutations')
+        axs.plot(bestlog[colname], '-', linewidth=lw, label='best of the generation')
+        axs.plot(lineage[colname], '-', linewidth=lw, color='mediumslateblue', label=f'lineage (L={len(lineage)})')
+        axs.set(xlabel=None, ylabel=labels[colname])
+        axs.grid(True, which="both",linestyle='--', linewidth=0.5)
+        if last_row:
+            axs.set(xlabel='Total number of mutations')
+        else:
+            axs.set_xticklabels([])
 
-    fig, axs = plt.subplots(3,2, figsize=(10, 8))
 
-    fig.suptitle(None) # type: ignore
+    summ_plot(axs[0,0], 'ptm')
+    summ_plot(axs[1,0], 'plddt')
+    summ_plot(axs[2,0], 'score', last_row = True)
+    axs[2,0].legend(loc ="lower right", markerscale=markerscale)
 
-    L = len(lineage)
-
-    axs[0,0].plot(log.ptm, '.', markersize=ms,    color='silver', label='all mutations')
-    axs[0,0].plot(bestlog.ptm, '-', linewidth=lw, label='best of the generation')
-    axs[0,0].plot(lineage.ptm, '-', linewidth=lw, color='mediumslateblue', label=f'lineage (L={L})')
-    axs[0,0].set(xlabel=None, ylabel='pTM')
-    axs[0,0].grid(True, which="both",linestyle='--', linewidth=0.5)
-    axs[0,0].set_xticklabels([])
-
-    axs[1,0].plot(log.plddt, '.', markersize=ms,    color='silver', label='all mutations')
-    axs[1,0].plot(bestlog.plddt, '-', linewidth=lw, label='best of the generation')
-    axs[1,0].plot(lineage.plddt, '-', linewidth=lw, color='mediumslateblue', label=f'lineage (L={L})')
-    axs[1,0].set(xlabel=None, ylabel='pLDDT')
-    axs[1,0].grid(True, which="both",linestyle='--', linewidth=0.5)
-    axs[1,0].set_xticklabels([])
-
-    axs[2,0].plot(log.score,  '.', markersize=ms,    color='silver', label='all mutations')
-    axs[2,0].plot(bestlog.score, '-', linewidth=lw,  label='best of the generation')
-    axs[2,0].plot(lineage.score,  '-', linewidth=lw, color='mediumslateblue', label=f'lineage (L={L})')
-    axs[2,0].set(xlabel='Total number of mutations', ylabel='Score')
-    axs[2,0].grid(True, which="both",linestyle='--', linewidth=0.5)
-    axs[2,0].legend(loc ="lower right")
-
-    if sim_param["seq2"]:
-        axs[0,1].plot(log.iptm, '.', markersize=ms,    color='silver', label='all mutations')
-        axs[0,1].plot(bestlog.iptm, '-', linewidth=lw, label='best of the generation')
-        axs[0,1].plot(lineage.iptm, '-', linewidth=lw, color='mediumslateblue', label=f'lineage (L={L})')
-        axs[0,1].set(xlabel=None, ylabel='ipTM')
-        axs[0,1].grid(True, which="both",linestyle='--', linewidth=0.5)
-        axs[0,1].set_xticklabels([])
-
-        axs[1,1].plot(log.plddt, '.', markersize=ms,    color='silver', label='all mutations')
-        axs[1,1].plot(bestlog.plddt, '-', linewidth=lw, label='best of the generation')
-        axs[1,1].plot(lineage.plddt, '-', linewidth=lw, color='mediumslateblue', label=f'lineage (L={L})')
-        axs[1,1].set(xlabel=None, ylabel='iPLDDT')
-        axs[1,1].grid(True, which="both",linestyle='--', linewidth=0.5)
-        axs[1,1].set_xticklabels([])
+    if simparam["seq2"]:
+        summ_plot(axs[0,1], 'iptm')
+        summ_plot(axs[1,1], 'iplddt')
 
     else:
-        axs[0,1].plot(log.cd, '.', markersize=ms,    color='silver', label='all mutations')
-        axs[0,1].plot(bestlog.cd, '-', linewidth=lw, label='best of the generation')
-        axs[0,1].plot(lineage.cd, '-', linewidth=lw, color='mediumslateblue', label=f'lineage (L={L})')
-        axs[0,1].set(xlabel=None, ylabel='Contact Density')
-        axs[0,1].grid(True, which="both",linestyle='--', linewidth=0.5)
-        axs[0,1].set_xticklabels([])
-
-        axs[1,1].plot(log.seq1_len, '.', markersize=ms,    color='silver', label='all mutations')
-        axs[1,1].plot(bestlog.seq1_len, '-', linewidth=lw, label='best of the generation')
-        axs[1,1].plot(lineage.seq1_len, '-', linewidth=lw, color='mediumslateblue', label=f'lineage (L={L})')
-        axs[1,1].set(xlabel=None, ylabel='Sequence length')
-        axs[1,1].grid(True, which="both",linestyle='--', linewidth=0.5)
-        axs[1,1].set_xticklabels([])
-
-
-    axs[2,1].plot(log.beta, '.', markersize=ms,  color='silver', label='all mutations')
-    axs[2,1].plot(bestlog.beta, '-', linewidth=lw, label='best of the generation')
-    axs[2,1].plot(lineage.beta, '-', linewidth=lw, color='mediumslateblue', label=f'lineage (L={L})')
-    axs[2,1].set(xlabel='Total number of mutations', ylabel='Beta')
-    axs[2,1].grid(True, which="both",linestyle='--', linewidth=0.5)
+        summ_plot(axs[0,1], 'cd')
+        summ_plot(axs[1,1], 'lcd')
+    
+    summ_plot(axs[2,1], 'seq1_len', last_row = True)
 
     fig.tight_layout()
     fig.savefig(os.path.join(outdir,'Summary.png'), dpi=dpi)
 
 
 
+def make_lineage_summary(lineage, simparam):
+
+    lineage.index = lineage.index / simparam['pop_size']
+    
+    lw=1.0
+    dpi=500
+        
+    def lin_summ_plot(axs, colnames, last_row = False):
+        for colname in colnames:
+            axs.plot(lineage[colname], '-', linewidth=lw, label=labels[colname])
+        axs.grid(True, which="both",linestyle='--', linewidth=0.5)
+        axs.set(xlabel=None, ylabel=None)
+        axs.legend()
+        if last_row:
+            axs.set(xlabel='Generations')
+        else:
+            axs.set_xticklabels([])
+
+
+    fig, axs = plt.subplots(2,2, figsize=(10, 6))
+    fig.suptitle(None) # type: ignore
+
+    if simparam['ligand']:
+        fig, axs = plt.subplots(3,2, figsize=(10, 8))
+        fig.suptitle(None) # type: ignore
+
+        lin_summ_plot(axs[0,0], ['ptm','plddt'])
+        lin_summ_plot(axs[1,0], ['iptm', 'iplddt'])
+        lin_summ_plot(axs[2,0], ['evolrate', 'score'])
+        lin_summ_plot(axs[0,1], ['cd', 'lcd'], last_row=True)
+        if simparam["seq2"]:
+            lin_summ_plot(axs[1,1], ['seq1_len', 'seq2_len'])
+            lin_summ_plot(axs[2,1], ['seq1_stat', 'seq2_stat', 'beta'], last_row=True)
+        else: 
+            lin_summ_plot(axs[1,1], ['seq1_len'])
+            lin_summ_plot(axs[2,1], ['seq1_stat', 'beta'], last_row=True)
+
+    elif simparam['seq2'] and not simparam['ligand']:
+        fig, axs = plt.subplots(3,2, figsize=(10, 6))
+        fig.suptitle(None) # type: ignore
+
+        lin_summ_plot(axs[0,0], ['ptm','plddt'])
+        lin_summ_plot(axs[1,0], ['iptm', 'iplddt'])
+        lin_summ_plot(axs[2,0], ['evolrate', 'score'])
+        lin_summ_plot(axs[0,1], ['cd'], last_row=True)
+        lin_summ_plot(axs[1,1], ['seq1_len', 'seq2_len'])
+        lin_summ_plot(axs[2,1], ['seq1_stat', 'seq2_stat', 'beta'], last_row=True)
+
+
+    elif not simparam['seq2'] and simparam['ligand']:
+        lin_summ_plot(axs[0,0], ['ptm','plddt'])
+        lin_summ_plot(axs[1,0], ['iptm', 'iplddt'])
+        lin_summ_plot(axs[2,0], ['evolrate', 'score'])
+        lin_summ_plot(axs[0,1], ['cd', 'lcd'], last_row=True)
+        lin_summ_plot(axs[1,1], ['seq1_len'])
+        lin_summ_plot(axs[2,1], ['seq1_stat', 'beta'], last_row=True)
+
+    elif not simparam['seq2'] and not simparam['ligand']:
+        lin_summ_plot(axs[0,0], ['ptm'])
+        lin_summ_plot(axs[1,0], ['plddt'])
+        lin_summ_plot(axs[2,0], ['evolrate', 'score'])
+        lin_summ_plot(axs[0,1], ['cd'], last_row=True)
+        lin_summ_plot(axs[1,1], ['seq1_len'])
+        lin_summ_plot(axs[2,1], ['seq1_stat', 'beta'], last_row=True)
+
+    fig.tight_layout()
+    fig.savefig(os.path.join(outdir,'Lineage_summary.png'), dpi=dpi)
+
+
 #======================= functions end here =======================#
+#==================================================================#
+
 
 if os.path.isfile(args.log) is False:
     raise FileNotFoundError(f'Log file "{args.log}" not found')
-    
+
 outdir = args.outdir 
 os.makedirs(outdir, exist_ok=True)
 plotdir = os.path.join(outdir, 'plots/')
@@ -251,27 +301,44 @@ tmp_svg = os.path.join(outdir, 'tmp/svg/')
 tmp_png = os.path.join(outdir, 'tmp/png/')
 
 
-print('#============= reading progress log =============#')
-sim_param = read_header(args.log)
-print(''.join([f"#--{param:<24} = {value}\n" for param, value in sim_param.items()]))
+simparam = read_header(args.log)
+print(''.join([f"#--{param:<24} = {value}\n" for param, value in simparam.items()]))
 
+if not args.nopdb:
+    print("#============= dropping structures =============#", end="\r")
+    with open("tmp_progress_nopdb.log", "w") as f:
+        for line in open(args.log):
+            if line.startswith("#--"):
+                f.write(line)
+            else:
+                break
+  
+    os.system(f"grep -v '^#' {args.log} | cut -f1-13 >> tmp_progress_nopdb.log")
+
+    args.log = "tmp_progress_nopdb.log"
+
+print('#============= reading trajectory ==============#', end="\r")
 log = pd.read_csv(args.log, sep='\t', comment='#', on_bad_lines='skip')
 log = log.iloc[args.start:args.end]
 
-log.sequence_data = log.sequence_data.apply(ast.literal_eval)
+print('#=========== recalculating statistics ===========#', end="\r")
+log["sequence_data"] = log.sequence_data.apply(ast.literal_eval)
 
 log["seq1"] = log["sequence_data"].apply(lambda x: x["seq1"]["sequence"])
 log["seq1_ss"] = log["sequence_data"].apply(lambda x: x["seq1"]["ss"])
 log["seq1_len"] = log["sequence_data"].apply(lambda x: x["seq1"]["len"])
-log["seq1_stat"] = log["seq1"].apply(lambda x: seqstat[sim_param["seq1_type"]].n_gram_prior(x))
-if sim_param["seq2"]:
+log["seq1_stat"] = log["seq1"].apply(lambda x: seqstat[simparam["seq1_type"]].n_gram_prior(x))
+if simparam["seq2"]:
     log["seq2"] = log["sequence_data"].apply(lambda x: x["seq2"]["sequence"])
     log["seq2_ss"] = log["sequence_data"].apply(lambda x: x["seq2"]["ss"])
     log["seq2_len"] = log["sequence_data"].apply(lambda x: x["seq2"]["len"])
-    log["seq2_stat"] = log["seq2"].apply(lambda x: seqstat[sim_param["seq2_type"]].n_gram_prior(x))
+    log["seq2_stat"] = log["seq2"].apply(lambda x: seqstat[simparam["seq2_type"]].n_gram_prior(x))
 
 
-print(f'#processing trajectory with {len(log)} records')
+print(f'#========= trajectory with {len(log)} records            ')
+
+
+
 
 bestlog = log.groupby('gndx').head(1)
 bestlog.to_csv(os.path.join(outdir, 'bestlog.tsv'), sep='\t', index=False, header=True)
@@ -279,26 +346,31 @@ bestlog.to_csv(os.path.join(outdir, 'bestlog.tsv'), sep='\t', index=False, heade
 
 print('#================================================#')
 lineage = extract_lineage(log)
+
 lineage.to_csv(os.path.join(outdir, 'lineage.tsv'), sep='\t', index=False, header=True)
 
 
 
 if args.noplots:
+    print("#=========== preparing summary plots ============#", end="\r")
+    make_summary_plot(log, bestlog, lineage, simparam)
+    make_lineage_summary(lineage, simparam)
 
-    print('#=== making summary plot')
-    make_summary_plot(log, bestlog, lineage, sim_param)
-
-    print('#=== making plots')
+    print("#============ preparing other plots =============#", end="\r")
     make_plots(log, bestlog, lineage)
 
-if args.notraj:
-    print("#=== extracting structures")
+if args.nopdb:
+    print("#============ extracting structures ==+=========#", end="\r")
     extract_structures(lineage, outdir)
+
+if not args.nopdb:
+    os.remove("tmp_progress_nopdb.log")
+
 
 # a future update
 # if args.summary:
 #     print('#=== making summary plot')
-#     make_summary_plot(log, bestlog, lineage, sim_param)
+#     make_summary_plot(log, bestlog, lineage, simparam)
 
 # if args.plots:
 #     print('#=== making plots')
@@ -308,5 +380,6 @@ if args.notraj:
 #     print("#=== extracting structures")
 #     extract_structures(lineage, outdir)
 
+print('#==================== done ======================#')
 print('#================================================#\n')
 

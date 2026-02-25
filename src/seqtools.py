@@ -5,6 +5,10 @@ from collections import Counter
 from itertools import product
 import numpy as np
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class Seqstat:
 
@@ -17,36 +21,36 @@ class Seqstat:
 
         # Priority: Load from FASTA if provided
         if stat_from == None:
-            print("No statistics file provided. \nPlease run calculate_background_distribution to generate statistics from a FASTA file or load statistics for a json.")
+            logger.warning("No statistics file provided. \nPlease run calculate_background_distribution to generate statistics from a FASTA file or load statistics for a json.")
             
         elif Path(stat_from).exists():  
             if stat_from.split('.')[-1] == "json":
                 try:
-                    print(f"Loading statistics from {stat_from}")
+                    logger.info(f"Loading statistics from {stat_from}")
                     with open(stat_from, 'r') as f:
                         self.kmer_stat = json.load(f)
                 except Exception as e:
-                    print(f"ERROR: Could not process {stat_from}.\
+                    logger.error(f"ERROR: Could not process {stat_from}.\
                           \nCalculate dictribution from a fasta file with \
                           calculate_background_distribution or provide valid JSON\n{e}")
                     pass
 
             elif stat_from.split('.')[-1] in ["fasta", "fa", "fas"]:
                 try:
-                    print(f"Calculating statistics from {stat_from}")
+                    logger.info(f"Calculating statistics from {stat_from}")
                     self.calculate_background_distribution(stat_from)
 
                 except Exception as e:
-                    print(f"ERROR: Could not process {stat_from}.\
+                    logger.error(f"ERROR: Could not process {stat_from}.\
                           \nCalculate dictribution from a fasta file with \
                           calculate_background_distribution or provide valid JSON\n{e}")
                     pass
 
         else:
-            print(f"{stat_from} does not exist. Run calculate_background_distribution or provide valid JSON.")
+            logger.warning(f"{stat_from} does not exist. Run calculate_background_distribution or provide valid JSON.")
 
 
-    def _get_alphabet(self) -> str:
+    def get_alphabet(self) -> str:
         """Return valid characters for the sequence type."""
         if self.seqtype == "protein":
             return "ACDEFGHIKLMNPQRSTVWY"
@@ -54,10 +58,12 @@ class Seqstat:
             return "AUGC"
         elif self.seqtype == "dna":
             return "ATGC"
+        else:
+            raise ValueError(f"Unsupported sequence type: {self.seqtype}")
 
     def _all_kmers(self, k: int) -> list:
         """Generate all possible k-mers for the sequence type."""
-        alphabet = self._get_alphabet()
+        alphabet = self.get_alphabet()
         return [''.join(p) for p in product(alphabet, repeat=k)]
 
     @staticmethod
@@ -111,7 +117,7 @@ class Seqstat:
                 yield "".join(seq).upper()
 
 
-    def split2kmers(self, seq: str|list, k=3) -> list:
+    def split2kmers(self, seq: T.Union[str, list], k=3) -> list:
         seqlen = len(seq)
         assert 0 < k <= seqlen, f"Invalid k={k} for sequence of length {seqlen}"
         return [seq[i:i+k] for i in range(seqlen-k+1)]
@@ -129,7 +135,7 @@ class Seqstat:
             3: Counter()
         }
 
-        print("Parsing sequences...")
+        logger.info("Parsing sequences...")
         count = 0
         
         for seq in self.read_fasta_generator(fasta_path):
@@ -145,12 +151,12 @@ class Seqstat:
             if count % 100000 == 0:
                 print(f"Processed {count} sequences...", end='\r')
             
-        print(f"\nProcessed {count} sequences.")
+        logger.info(f"\nProcessed {count} sequences.")
         
-        print("Filtering invalid k-mers...")
+        logger.info("Filtering invalid k-mers...")
 
         # Prune invalid k-mers
-        valid_chars = set(self._get_alphabet())
+        valid_chars = set(self.get_alphabet())
 
         for n in [1, 2, 3]:
             unique_kmers = list(counts[n].keys())
