@@ -12,6 +12,11 @@ import typing as T
 from pathlib import Path
 from datetime import datetime
 
+from seqtools import Seqstat
+
+protein_seqstat = Seqstat('data/pfam80_stat.json')
+rna_seqstat = Seqstat('data/rnacentral90_stat.json') #test! using prot stat for RNA
+seqstat = {"protein": protein_seqstat, "rna": rna_seqstat}
 
 
 def parse_args() -> argparse.Namespace:
@@ -32,6 +37,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--config', type=str, default='../data/simparam.json', help='default configs')
     parser.add_argument('-sm', '--selection_mode', type=str, help='selection mode\n options: strong, weak, weak2')
     parser.add_argument('-ed', '--evoldict', type=str, help='a dictionary with parameters for simulation')
+    parser.add_argument('-npm', '--include_npm', action='store_true', help='include npm in simulation')
     #pop_size and num generations
     parser.add_argument('-ng', '--num_generations', type=int, help='number of generations')
     parser.add_argument('-ps', '--pop_size', type=int, help='population size')
@@ -69,7 +75,10 @@ def parse_args() -> argparse.Namespace:
     #contact calculatsion
     parser.add_argument('--contact_min_seq_dist', type=int, help='annealing step')
     parser.add_argument('--contact_cutoff', type=float, help='annealing step')
+    parser.add_argument('--lig_contact_cutoff', type=float, help='annealing step')
     parser.add_argument('--contact_min_plddt', type=float, help='annealing step')
+    parser.add_argument('--lig_contact_min_plddt', type=float, help='annealing step')
+
     #other
     parser.add_argument('--prediction_engine', type=str, help="structure prediction engine")
     parser.add_argument('--norepeat', action='store_true', help='do not generate and/or select the same sequences more than once')
@@ -125,7 +134,14 @@ def parse_args() -> argparse.Namespace:
             print("Valid input example: 'protein:random:50:evolv'")
             sys.exit(1)
 
-    assert args.seq1_evol == True or args.seq2_evol == True, "either seq1_evol or seq1_evol must be True"
+    elif not args.iseq2 and args.seq2_init:
+        assert args.seq2_type is not None, "if seq2_init is provided seq2_type must also be provided"
+        args.seq2_len = len(args.seq2_init)
+        if args.seq2_evol is None:
+            args.seq2_evol = False
+            args.seq1_rate = 1.0
+           
+    assert args.seq1_evol == True or args.seq2_evol == True, "either seq1_evol or seq2_evol must be True"
 
     if args.ligand != None:
         args.ligand = args.ligand.split(",")
@@ -231,6 +247,7 @@ def parse_args() -> argparse.Namespace:
         args.seq1_rate /= rate_max
         args.seq2_rate /= rate_max
     else: 
+        print("Only 1 sequence is provided, setting seq_rate = 1.0")
         args.seq1_rate = 1.0
         args.seq2_rate = 0.0
 
@@ -310,7 +327,6 @@ def load_checkpoint(checkpoint_path):
 
     return  ckp_gen, arg_dict
 
-
 def generate_loghead(args) -> str:
 
     params = [f"#--{param:<24} = {value}\n" for param, value in vars(args).items()]
@@ -337,7 +353,7 @@ def ungzip_str(b64_str: str) -> str:
     return gzip.decompress(compressed).decode('utf-8')
 
 
-def sigmoid(x:float|int, L0=0.0, c=0.1) -> float:
+def sigmoid(x:T.Union[float, int], L0=0.0, c=0.1) -> float:
     z = c * (L0 - x)
     # Clip to prevent overflow
     z = np.clip(z, -709, 709)  # e^500 is near max float, e^-500 is near 0
@@ -346,8 +362,6 @@ def sigmoid(x:float|int, L0=0.0, c=0.1) -> float:
 def update_beta(args):
     args.beta += args.annealing_step
     args.beta = round(args.beta, 3)
-
-
 
 def gc_content(seq:str) -> float:
     return round(((seq.count('C') + seq.count('G')) / len(seq)), 3)
@@ -407,8 +421,6 @@ def backup_output(directory_path, backup_suffix=None, max_backups=None) -> T.Opt
     except (OSError, shutil.Error) as e:
         raise OSError(f"Failed to backup directory: {e}")
 
-
-
 def batch_sequence_dataset(sequences: T.List[T.Tuple[str, dict]], 
                            pop_size: int = 50, 
                            max_seq_per_batch: int = 25
@@ -435,34 +447,6 @@ def batch_sequence_dataset(sequences: T.List[T.Tuple[str, dict]],
     yield batch_headers, batch_sequences
 
 
-def prepare_af3_input(seq_data_list, args) -> list[list[dict]]:
-
-    """prepares sequences in generation dataframe for af3 input"""
-
-    if isinstance(seq_data_list, dict):
-        seq_data_list = [seq_data_list]
-
-    if args.seq2:
-        inputs = [[{"type": args.seq1_type, "sequence": data["seq1"]["sequence"], "id": "A"},
-                   {"type": args.seq2_type, "sequence": data["seq2"]["sequence"], "id": "B"}] for data in seq_data_list]
-
-    else:
-        inputs = [[{"type": args.seq1_type, "sequence": data["seq1"]["sequence"], "id": "A"}] for data in seq_data_list]
-
-
-    if args.ligand:
-
-        for inp in inputs:
-            chain_id = inp[-1]["id"]
-            for lig in args.ligand:
-                chain_id = chr(ord(chain_id) + 1)
-
-                #if lig in ccd_list:
-                inp.append({"type":"ligand", 'ccd_code': lig, "id": chain_id}) 
-        
-    return inputs
-
-
 def create_init_gen(evolver, args) -> pd.DataFrame:
     '''Create initial generation to start simulation'''
     
@@ -483,7 +467,6 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
 
     if args.seq1_init == 'random':
         randomsequence1 = evolver.randomseq(args.seq1_type, args.seq1_len)
-        
         seq_data = [{
             "seq1": {
                 "type": args.seq1_type, 
@@ -491,6 +474,7 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
                 "ss": "SECONDARYSTRUCTURES", 
                 "len": args.seq1_len,
                 "evolve": args.seq1_evol,
+                "seqstat": seqstat[args.seq1_type].n_gram_prior(randomsequence1)
             }
         } for _ in range(args.pop_size)]
         
@@ -501,15 +485,20 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
 
     elif args.seq1_init == 'randoms':
         init_gen['id'] = [f'initseq{i}' for i in range(args.pop_size)]
-        seq_data = [{
-            "seq1": {
-                "type": args.seq1_type, 
-                "sequence": evolver.randomseq(args.seq1_type, args.seq1_len), 
-                "ss": "SECONDARYSTRUCTURES",
-                "len": args.seq1_len,
-                "evolve": args.seq1_evol,
-            }
-        } for i in range(args.pop_size)]
+        seq_data = []
+        for _ in range(args.pop_size):
+            randomsequence1 = evolver.randomseq(args.seq1_type, args.seq1_len)
+            seq_data.append(
+                {"seq1": 
+                    {
+                    "type": args.seq1_type, 
+                    "sequence": randomsequence1,
+                    "ss": "SECONDARYSTRUCTURES",
+                    "len": args.seq1_len,
+                    "evolve": args.seq1_evol,
+                    "seqstat": seqstat[args.seq1_type].n_gram_prior(randomsequence1)
+                    }
+                })
 
     else: # predefined sequence
         seq_data = [{
@@ -519,6 +508,7 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
                 "len": args.seq1_len,
                 "ss": "SECONDARYSTRUCTURES",
                 "evolve": args.seq1_evol,
+                "seqstat": seqstat[args.seq1_type].n_gram_prior(args.seq1_init)
             }
         } for _ in range(args.pop_size)]
         
@@ -538,27 +528,30 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
                     "ss": "SECONDARYSTRUCTURES",
                     "len": args.seq2_len,
                     "evolve": args.seq2_evol,
+                    "seqstat": seqstat[args.seq2_type].n_gram_prior(randomsequence2)
                 }
         
         elif args.seq2_init == 'randoms':
-            for i in range(args.pop_size):
+            for seq_data_i in seq_data:
                 randomsequence2 = evolver.randomseq(args.seq2_type, args.seq2_len)
-                seq_data[i]["seq2"] = {
+                seq_data_i["seq2"] = {
                     "type": args.seq2_type, 
                     "sequence": randomsequence2, 
                     "ss": "SECONDARYSTRUCTURES",
                     "len": args.seq2_len,
                     "evolve": args.seq2_evol,
+                    "seqstat": seqstat[args.seq2_type].n_gram_prior(randomsequence2)
                 }
-        
+
         else: # if predefined seq2
             for i in range(args.pop_size):
                 seq_data[i]["seq2"] = {
                     "type": args.seq2_type,
                     "sequence": args.seq2_init,
                     "ss": "SECONDARYSTRUCTURES",
-                    "len": args.seq2_init,
+                    "len": args.seq2_len,
                     "evolve": args.seq2_evol,
+                    "seqstat": seqstat[args.seq1_type].n_gram_prior(args.seq2_init)
                 }
 
 
@@ -616,6 +609,40 @@ def export_scoring(evolution_type) -> T.Callable:
 
     return scoring_function
 
+class ScoringFunction:
+    
+    def __init__(self, evolution_type):
+
+        self.scoring_weights = {
+        'PROTEIN_EVOLUTION':                    {"ptm": 0.4, "plddt": 0.2, "iptm": 0.0,  "iplddt": 0.0,  "cd": 0.4, "lcd": 0.0},
+        'NUCLEIC_EVOLUTION':                    {"ptm": 0.5, "plddt": 0.5, "iptm": 0.0,  "iplddt": 0.0,  "cd": 0.0,  "lcd": 0.0},
+        'PROTEIN_PROTEIN_EVOLUTION':            {"ptm": 0.2, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.25, "cd": 0.2, "lcd": 0.0},
+        'PROTEIN_PROTEIN_COEVOLUTION':          {"ptm": 0.2, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.25, "cd": 0.2, "lcd": 0.0},
+        'PROTEIN_NUCLEIC_EVOLUTION':            {"ptm": 0.2, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.25, "cd": 0.2, "lcd": 0.0},
+        'PROTEIN_NUCLEIC_COEVOLUTION':          {"ptm": 0.2, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.25, "cd": 0.2, "lcd": 0.0},
+        'NUCLEIC_NUCLEIC_EVOLUTION':            {"ptm": 0.2, "plddt": 0.2, "iptm": 0.3, "iplddt": 0.3, "cd": 0.0, "lcd": 0.0},
+        'NUCLEIC_NUCLEIC_COEVOLUTION':          {"ptm": 0.2, "plddt": 0.2, "iptm": 0.3, "iplddt": 0.3, "cd": 0.0, "lcd": 0.0},
+        'PROTEIN_LIGAND_EVOLUTION':             {"ptm": 0.1, "plddt": 0.1, "iptm": 0.2, "iplddt": 0.2, "cd": 0.2, "lcd": 0.2},
+        'NUCLEIC_LIGAND_EVOLUTION':             {"ptm": 0.1, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.3, "cd": 0.0, "lcd": 0.25},
+        'PROTEIN_PROTEIN_LIGAND_EVOLUTION':     {"ptm": 0.1, "plddt": 0.1, "iptm": 0.2, "iplddt": 0.2, "cd": 0.2, "lcd": 0.2},
+        'PROTEIN_PROTEIN_LIGAND_COEVOLUTION':   {"ptm": 0.1, "plddt": 0.1, "iptm": 0.2, "iplddt": 0.2, "cd": 0.2, "lcd": 0.2},
+        'PROTEIN_NUCLEIC_LIGAND_EVOLUTION':     {"ptm": 0.1, "plddt": 0.1, "iptm": 0.2, "iplddt": 0.2, "cd": 0.2, "lcd": 0.2},
+        'PROTEIN_NUCLEIC_LIGAND_COEVOLUTION':   {"ptm": 0.1, "plddt": 0.1, "iptm": 0.2, "iplddt": 0.2, "cd": 0.2, "lcd": 0.2},
+        'NUCLEIC_NUCLEIC_LIGAND_EVOLUTION':     {"ptm": 0.1, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.3, "cd": 0.0, "lcd": 0.25},
+        'NUCLEIC_NUCLEIC_LIGAND_COEVOLUTION':   {"ptm": 0.1, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.3, "cd": 0.0, "lcd": 0.25}
+                   }       
+        self.weigths = self.scoring_weights[evolution_type]
+
+    def score(self, ptm, plddt, iptm, iplddt, contact_density, ligand_contact_density,  penalty):
+        
+        s = (self.weigths["iptm"]*iptm + 
+             self.weigths["iplddt"]*iplddt + 
+             self.weigths["ptm"]*ptm + 
+             self.weigths["plddt"]*plddt + 
+             self.weigths["cd"]*contact_density + 
+             self.weigths["lcd"]*ligand_contact_density) * penalty
+        
+        return round(s, 3)
 
 def extract_sequence(seq_data: dict) -> str:
     seq1 = seq_data['seq1']['sequence']

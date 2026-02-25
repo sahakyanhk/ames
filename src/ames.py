@@ -23,7 +23,7 @@ from amestools import (parse_args,
                        batch_sequence_dataset, 
                        create_init_gen,
                        print_genlog,
-                       export_scoring,
+                       ScoringFunction
                       )
 
 
@@ -295,9 +295,10 @@ def extract_results(gen_i: int,
                                                                polymer_chain=args.polymer_chains,
                                                                ligand_chain=args.ligand_chains,
                                                                min_plddt=args.lig_contact_min_plddt)
-            
+
+            ligand_iplddt = pc.interface_plddt(pdb_txt, chain1 = args.polymer_chains, chain2 = args.ligand_chains, cutoff = 7) * 0.01 
+
             if args.seq2:
-                ligand_iplddt = pc.interface_plddt(pdb_txt, chain1 = args.polymer_chains, chain2 = args.ligand_chains, cutoff = 7) * 0.01 
                 iplddt = (iplddt + ligand_iplddt) / 2
             else:
                 iplddt = ligand_iplddt
@@ -323,15 +324,14 @@ def extract_results(gen_i: int,
         
         #=============================== SCORING ===============================#
 
-        score = scoring_function(ptm, 
-                                 plddt, 
-                                 iptm, 
-                                 iplddt, 
-                                 contact_density, 
-                                 ligand_contact_density,
-                                 penalty) 
-
-        score = round(score, 3)
+        score = scoring.score(ptm, 
+                              plddt, 
+                              iptm, 
+                              iplddt, 
+                              contact_density, 
+                              ligand_contact_density,
+                              penalty
+                              ) 
 
         row_data = {
             'gndx': gen_i,
@@ -362,7 +362,7 @@ def extract_results(gen_i: int,
             new_gen = batch_df
         else:
             new_gen = pd.concat([new_gen, batch_df], axis=0, ignore_index=True) 
-    
+
 
 
 #================================= RESULT PROCESSING ================================#
@@ -371,11 +371,11 @@ def extract_results(gen_i: int,
 
 args = parse_args()
 
-evolver = Evolver()
+evolver = Evolver(include_npm=args.include_npm) # TODO multiple separate evoldicts w/ and w/o npm
 protein_seqstat = Seqstat('data/pfam80_stat.json')
 rna_seqstat = Seqstat('data/rnacentral90_stat.json') 
 
-scoring_function = export_scoring(args.evolution_type)
+scoring = ScoringFunction(args.evolution_type)
 
 
 #backup if output directory exists
@@ -393,9 +393,9 @@ if args.prediction_engine == "af3":
     from adapters import ames_to_af3 as adapter
     from af3_runner import af3_runner as structure_predictor
 
-elif args.prediction_engine == "of3":
-    from adapters import ames_to_of3 as adapter
-    from of3_runner import of3_runner as structure_predictor
+# elif args.prediction_engine == "of3":
+#     from adapters import ames_to_of3 as adapter
+#     from of3_runner import of3_runner as structure_predictor
 
 elif args.prediction_engine == "esmfold":
     from adapters import ames_to_esmfold as adapter
