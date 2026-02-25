@@ -29,7 +29,7 @@ def ames_to_af3(seq_data_list, args) -> list[list[dict]]:
 
 def ames_to_esmfold(seq_data_list: list[dict], args) -> list[str]:
 
-    """Extract protein sequences from AMES-format input dicts."""
+    """prepares sequences in generation dataframe for esmfold input"""
 
     if isinstance(seq_data_list, dict):
         seq_data_list = [seq_data_list]

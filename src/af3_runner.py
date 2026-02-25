@@ -290,7 +290,7 @@ def create_model_runner(
 def run_inference(
     fold_input_obj: folding_input.Input,
     model_runner: run_alphafold.ModelRunner,
-    buckets: list[int] = [40, 50, 60, 70, 80, 90, 100, 120, 140, 150, 160],
+    buckets: list[int] = [40, 50, 60, 70, 80, 90, 100, 120, 140, 150, 160, 170, 180, 200, 210, 220, 230, 240, 250],
 ) -> list:
     """
     Run inference 
