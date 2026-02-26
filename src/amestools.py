@@ -37,7 +37,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--config', type=str, default='../data/simparam.json', help='default configs')
     parser.add_argument('-sm', '--selection_mode', type=str, help='selection mode\n options: strong, weak, weak2')
     parser.add_argument('-ed', '--evoldict', type=str, help='a dictionary with parameters for simulation')
-    parser.add_argument('-npm', '--include_npm', action='store_true', help='include npm in simulation')
+
+    parser.add_argument('-pa', '--protein_alphabet', type=str, help='protein_alphabet')
+    parser.add_argument('-ra', '--rna_alphabet', type=str, help='rna_alphabet')
+    parser.add_argument('-da', '--dna_alphabet', type=str, help='dna_alphabet')
+    parser.add_argument('-pm', '--protein_mutations', type=str, help='protein_mutations')
+    parser.add_argument('-rm', '--rna_mutations', type=str, help='rna_mutations')
+    parser.add_argument('-dm', '--dna_mutations', type=str, help='dna_mutations')
+
     #pop_size and num generations
     parser.add_argument('-ng', '--num_generations', type=int, help='number of generations')
     parser.add_argument('-ps', '--pop_size', type=int, help='population size')
@@ -80,7 +87,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--lig_contact_min_plddt', type=float, help='annealing step')
 
     #other
-    parser.add_argument('--prediction_engine', type=str, help="structure prediction engine")
+    parser.add_argument('--engine', type=str, help="structure prediction engine")
     parser.add_argument('--norepeat', action='store_true', help='do not generate and/or select the same sequences more than once')
     parser.add_argument('--max_seq_per_batch', type=int, help='max_seq_per_batch, by defaulf it is half or population size')
 

@@ -134,10 +134,10 @@ def fold_evolution_simulator() -> None:
         #predict data for the new batch        
         for headers, sequence_data_batch in batched_sequence_data:
             
-            if args.prediction_engine in ["af3", "of3", "esmfold"]:
+            if args.engine in ["af3", "of3", "esmfold"]:
                 structure_predictor_ouptut = structure_predictor(adapter(sequence_data_batch, args))  # type: ignore
 
-            elif args.prediction_engine == "simulacrum":
+            elif args.engine == "simulacrum":
                 structure_predictor_ouptut = fold_evolution_simulacrum(sequence_data_batch, args) #imitate empty of3/af3 engine output
 
 
@@ -215,7 +215,7 @@ def extract_results(gen_i: int,
 
 
         # imitate simulation without real structure prediction
-        if args.prediction_engine == "simulacrum":
+        if args.engine == "simulacrum":
             score = seq_data["seq1"]["seqstat"]
 
             row_data = {
@@ -371,7 +371,15 @@ def extract_results(gen_i: int,
 
 args = parse_args()
 
-evolver = Evolver(include_npm=args.include_npm) # TODO multiple separate evoldicts w/ and w/o npm
+evolver = Evolver(protein_alphabet = args.protein_alphabet,
+                  rna_alphabet = args.rna_alphabet,
+                  dna_alphabet = args.dna_alphabet,
+                  protein_mutations = args.protein_mutations,
+                  rna_mutations = args.rna_mutations,
+                  dna_mutations = args.dna_mutations
+                  ) 
+
+
 protein_seqstat = Seqstat('data/pfam80_stat.json')
 rna_seqstat = Seqstat('data/rnacentral90_stat.json') 
 
@@ -389,19 +397,19 @@ else:
 
 
 
-if args.prediction_engine == "af3":
+if args.engine == "af3":
     from adapters import ames_to_af3 as adapter
     from af3_runner import af3_runner as structure_predictor
 
-# elif args.prediction_engine == "of3":
+# elif args.engine == "of3":
 #     from adapters import ames_to_of3 as adapter
 #     from of3_runner import of3_runner as structure_predictor
 
-elif args.prediction_engine == "esmfold":
+elif args.engine == "esmfold":
     from adapters import ames_to_esmfold as adapter
     from esmfold_runner import esmfold_runner as structure_predictor
 
-elif args.prediction_engine == "simulacrum":
+elif args.engine == "simulacrum":
     from simulacra import fold_evolution_simulacrum
 
 

@@ -1,6 +1,13 @@
 {
     "selection_mode": "weak",
+    "include_npm": false,
     "evoldict": null,
+    "protein_alphabet": "uniform",
+    "rna_alphabet": "uniform",
+    "dna_alphabet": "uniform",
+    "protein_mutations": "npm",
+    "rna_mutations": "npm",
+    "dna_mutations": "npm",
     "num_generations": 1000,
     "pop_size": 100,
     "beta": 1.0,
@@ -32,8 +39,10 @@
     "nobackup": false,
     "contact_min_seq_dist": 4,
     "contact_cutoff": 4.5,
+    "lig_contact_cutoff": 4.5,
     "contact_min_plddt": 60.0,
-    "prediction_engine": "af3",
+    "lig_contact_min_plddt": 70.0,
+    "engine": "af3",
     "norepeat": false,
     "max_seq_per_batch": null
 }
