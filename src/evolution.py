@@ -42,9 +42,10 @@ class Evolver:
                             'G': 1.4140, 'H': 0.4600, 'I': 1.0660, 'K': 1.0100, 'L': 1.9520, 
                             'M': 0.4640, 'N': 0.7740, 'P': 1.0300, 'Q': 0.7860, 'R': 1.1620, 
                             'S': 1.4400, 'T': 1.1200, 'V': 1.3500, 'W': 0.2600, 'Y': 0.5700,},
+
                 "npm": {'+': 1.0, '-': 1.0, '*': 0.4, '/':0.4, '%': 0.9, 'p': 0.1, 'd': 0.05}, # non-point mutations
                 "pmo": {'+': 1.0, '-': 1.0}, #point mutations only
-                "nom": None # no mutations, protein length is fixed
+                "rso": None # no mutations, protein length is fixed
               }
 
     
@@ -52,14 +53,14 @@ class Evolver:
     rna = {"uniform": {'A': 1, 'U': 1, 'G': 1, 'C': 1,},
             "npm": {'+': 1.0, '-': 1.0, '*': 0.4, '/':0.4, '%': 0.9, 'p': 0.1, 'd': 0.05},
             "pmo": {'+': 1.0, '-': 1.0},
-            "nom": None
+            "rso": None
               }
 
     #===DNA dictionaries
     dna = {"uniform": {'A': 1, 'T': 1, 'G': 1, 'C': 1,},
            "npm": {'+': 1.0, '-': 1.0, '*': 0.4, '/':0.4, '%': 0.9, 'p': 0.1, 'd': 0.05},
            "pmo": {'+': 1.0, '-': 1.0},
-           "nom": None
+           "rso": None
             }
 
     

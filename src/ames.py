@@ -1,10 +1,17 @@
 import os
+import sys
 import shutil
 import random
 import copy
 import threading
 import pandas as pd
+from pathlib import Path
 from datetime import datetime
+
+# Ensure src/ is on sys.path so sibling modules are importable from any directory
+_src_dir = str(Path(__file__).resolve().parent)
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
 
 #AMES modules
 from evolution import Evolver
@@ -14,6 +21,7 @@ from psique import pypsique
 
 
 from amestools import (parse_args,
+                       DATA_DIR,
                        generate_loghead,
                        save_checkpoint,
                        update_beta,
@@ -254,7 +262,7 @@ def extract_results(gen_i: int,
     
         if args.seq2:
 
-            iplddt = round(pc.interface_plddt(pdb_txt, chain1 = "A", chain2 = "B", cutoff = 7) * 0.01, 3)
+            iplddt = round(pc.interface_plddt(pdb_txt, chain1 = "A", chain2 = "B", cutoff = args.interface_plddt_cutoff) * 0.01, 3)
 
             if args.seq2_type == 'protein':
                 protein_ss, _, _ = pypsique(pdb_txt, chain=args.protein_chain)
@@ -296,7 +304,7 @@ def extract_results(gen_i: int,
                                                                ligand_chain=args.ligand_chains,
                                                                min_plddt=args.lig_contact_min_plddt)
 
-            ligand_iplddt = pc.interface_plddt(pdb_txt, chain1 = args.polymer_chains, chain2 = args.ligand_chains, cutoff = 7) * 0.01 
+            ligand_iplddt = pc.interface_plddt(pdb_txt, chain1 = args.polymer_chains, chain2 = args.ligand_chains, cutoff = args.interface_plddt_cutoff) * 0.01 
 
             if args.seq2:
                 iplddt = (iplddt + ligand_iplddt) / 2
@@ -380,8 +388,8 @@ evolver = Evolver(protein_alphabet = args.protein_alphabet,
                   ) 
 
 
-protein_seqstat = Seqstat('data/pfam80_stat.json')
-rna_seqstat = Seqstat('data/rnacentral90_stat.json') 
+protein_seqstat = Seqstat(str(DATA_DIR / 'pfam80_stat.json'))
+rna_seqstat = Seqstat(str(DATA_DIR / 'rnacentral90_stat.json'))
 
 scoring = ScoringFunction(args.evolution_type)
 

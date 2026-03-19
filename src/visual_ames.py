@@ -1,11 +1,17 @@
 import argparse
-import os, re
+import os, re, sys
 import pandas as pd
 import numpy as np
 import json
 import ast
+from pathlib import Path
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+
+# Ensure src/ is on sys.path so sibling modules are importable from any directory
+_src_dir = str(Path(__file__).resolve().parent)
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
 
 from amestools import read_header, ungzip_str
 from pdbutils import extract_backbone
@@ -157,7 +163,7 @@ def make_plots(log, bestlog, lineage):
     os.makedirs(plotdir, exist_ok=True)
     for colname in log.keys(): 
         if colname in ['beta', 'plddt', 'ptm', 'iplddt', 'iptm', 
-                       'cd', 'lcd', 'score',
+                       'cd', 'lcd', 'score', 'evolrate', 
                        'seq1_len', 'seq1_stat',
                        'seq2_len', 'seq2_stat']:
                 
@@ -236,17 +242,14 @@ def make_lineage_summary(lineage, simparam):
             axs.set_xticklabels([])
 
 
-    fig, axs = plt.subplots(2,2, figsize=(10, 6))
+    fig, axs = plt.subplots(3,2, figsize=(10, 6))
     fig.suptitle(None) # type: ignore
 
     if simparam['ligand']:
-        fig, axs = plt.subplots(3,2, figsize=(10, 8))
-        fig.suptitle(None) # type: ignore
-
         lin_summ_plot(axs[0,0], ['ptm','plddt'])
         lin_summ_plot(axs[1,0], ['iptm', 'iplddt'])
-        lin_summ_plot(axs[2,0], ['evolrate', 'score'])
-        lin_summ_plot(axs[0,1], ['cd', 'lcd'], last_row=True)
+        lin_summ_plot(axs[2,0], ['evolrate', 'score'], last_row=True)
+        lin_summ_plot(axs[0,1], ['cd', 'lcd'])
         if simparam["seq2"]:
             lin_summ_plot(axs[1,1], ['seq1_len', 'seq2_len'])
             lin_summ_plot(axs[2,1], ['seq1_stat', 'seq2_stat', 'beta'], last_row=True)
@@ -260,8 +263,8 @@ def make_lineage_summary(lineage, simparam):
 
         lin_summ_plot(axs[0,0], ['ptm','plddt'])
         lin_summ_plot(axs[1,0], ['iptm', 'iplddt'])
-        lin_summ_plot(axs[2,0], ['evolrate', 'score'])
-        lin_summ_plot(axs[0,1], ['cd'], last_row=True)
+        lin_summ_plot(axs[2,0], ['evolrate', 'score'], last_row=True)
+        lin_summ_plot(axs[0,1], ['cd'])
         lin_summ_plot(axs[1,1], ['seq1_len', 'seq2_len'])
         lin_summ_plot(axs[2,1], ['seq1_stat', 'seq2_stat', 'beta'], last_row=True)
 
@@ -269,16 +272,16 @@ def make_lineage_summary(lineage, simparam):
     elif not simparam['seq2'] and simparam['ligand']:
         lin_summ_plot(axs[0,0], ['ptm','plddt'])
         lin_summ_plot(axs[1,0], ['iptm', 'iplddt'])
-        lin_summ_plot(axs[2,0], ['evolrate', 'score'])
-        lin_summ_plot(axs[0,1], ['cd', 'lcd'], last_row=True)
+        lin_summ_plot(axs[2,0], ['evolrate', 'score'], last_row=True)
+        lin_summ_plot(axs[0,1], ['cd', 'lcd'])
         lin_summ_plot(axs[1,1], ['seq1_len'])
         lin_summ_plot(axs[2,1], ['seq1_stat', 'beta'], last_row=True)
 
     elif not simparam['seq2'] and not simparam['ligand']:
         lin_summ_plot(axs[0,0], ['ptm'])
         lin_summ_plot(axs[1,0], ['plddt'])
-        lin_summ_plot(axs[2,0], ['evolrate', 'score'])
-        lin_summ_plot(axs[0,1], ['cd'], last_row=True)
+        lin_summ_plot(axs[2,0], ['evolrate', 'score'], last_row=True)
+        lin_summ_plot(axs[0,1], ['cd'])
         lin_summ_plot(axs[1,1], ['seq1_len'])
         lin_summ_plot(axs[2,1], ['seq1_stat', 'beta'], last_row=True)
 
@@ -328,11 +331,14 @@ log["seq1"] = log["sequence_data"].apply(lambda x: x["seq1"]["sequence"])
 log["seq1_ss"] = log["sequence_data"].apply(lambda x: x["seq1"]["ss"])
 log["seq1_len"] = log["sequence_data"].apply(lambda x: x["seq1"]["len"])
 log["seq1_stat"] = log["seq1"].apply(lambda x: seqstat[simparam["seq1_type"]].n_gram_prior(x))
+#log["seq1_stat"] = log["sequence_data"].apply(lambda x: x["seq1"]["seqstat"])
+
 if simparam["seq2"]:
     log["seq2"] = log["sequence_data"].apply(lambda x: x["seq2"]["sequence"])
     log["seq2_ss"] = log["sequence_data"].apply(lambda x: x["seq2"]["ss"])
     log["seq2_len"] = log["sequence_data"].apply(lambda x: x["seq2"]["len"])
     log["seq2_stat"] = log["seq2"].apply(lambda x: seqstat[simparam["seq2_type"]].n_gram_prior(x))
+#    log["seq2_stat"] = log["sequence_data"].apply(lambda x: x["seq2"]["seqstat"])
 
 
 print(f'#========= trajectory with {len(log)} records            ')
@@ -350,6 +356,10 @@ lineage = extract_lineage(log)
 lineage.to_csv(os.path.join(outdir, 'lineage.tsv'), sep='\t', index=False, header=True)
 
 
+if args.nopdb:
+    print("#============ extracting structures ==+=========#", end="\r")
+    extract_structures(lineage, outdir)
+
 
 if args.noplots:
     print("#=========== preparing summary plots ============#", end="\r")
@@ -359,9 +369,6 @@ if args.noplots:
     print("#============ preparing other plots =============#", end="\r")
     make_plots(log, bestlog, lineage)
 
-if args.nopdb:
-    print("#============ extracting structures ==+=========#", end="\r")
-    extract_structures(lineage, outdir)
 
 if not args.nopdb:
     os.remove("tmp_progress_nopdb.log")

@@ -402,6 +402,8 @@ outputs/
 build/ 
 pdb_contacts.egg-info/
 src/pdb_contacts.cpython-*
+pdb_contacts.cpython-*
+*.so
 test_polygon.ipynb
 summarize.sh
 

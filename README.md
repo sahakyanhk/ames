@@ -5,7 +5,7 @@
 ### Installation
 
 ```
-pip install numpy pandas pybind11 setuptools
+pip install numpy pandas pybind11 setuptools matplotlib 
 pip install . # install pdb_contacts
 ```
 Install [alphafold3](https://github.com/google-deepmind/alphafold3) or [openfold3](https://github.com/aqlaboratory/openfold-3)

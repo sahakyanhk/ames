@@ -41,7 +41,8 @@
     "contact_cutoff": 4.5,
     "lig_contact_cutoff": 4.5,
     "contact_min_plddt": 60.0,
-    "lig_contact_min_plddt": 70.0,
+    "interface_plddt_cutoff": 8.0,
+    "lig_contact_min_plddt": 60.0,
     "engine": "af3",
     "norepeat": false,
     "max_seq_per_batch": null

@@ -14,15 +14,18 @@ from datetime import datetime
 
 from seqtools import Seqstat
 
-protein_seqstat = Seqstat('data/pfam80_stat.json')
-rna_seqstat = Seqstat('data/rnacentral90_stat.json') #test! using prot stat for RNA
+# Resolve repo root from this file's location so paths work from any directory
+DATA_DIR = Path(__file__).resolve().parent / "data/"
+
+protein_seqstat = Seqstat(str(DATA_DIR / 'pfam80_stat.json'))
+rna_seqstat = Seqstat(str(DATA_DIR / 'rnacentral90_stat.json'))
 seqstat = {"protein": protein_seqstat, "rna": rna_seqstat}
 
 
 def parse_args() -> argparse.Namespace:
     # First parser: just to get config path
     parser = argparse.ArgumentParser(description='Evolution simulation', add_help=False)
-    parser.add_argument('--config', type=str, default='data/simparam.json',
+    parser.add_argument('--config', type=str, default=str(DATA_DIR / 'simparam.json'),
                         help='Path to JSON config file')
 
     args, remaining = parser.parse_known_args()
@@ -34,16 +37,16 @@ def parse_args() -> argparse.Namespace:
     parser.set_defaults(**defaults)
 
     #selection mode and simulations parameters
-    parser.add_argument('--config', type=str, default='../data/simparam.json', help='default configs')
+    parser.add_argument('--config', type=str, default=str(DATA_DIR / 'simparam.json'), help='default configs')
     parser.add_argument('-sm', '--selection_mode', type=str, help='selection mode\n options: strong, weak, weak2')
     parser.add_argument('-ed', '--evoldict', type=str, help='a dictionary with parameters for simulation')
 
-    parser.add_argument('-pa', '--protein_alphabet', type=str, help='protein_alphabet')
+    parser.add_argument('-pa', '--protein_alphabet', type=str, help='protein_alphabet [uniform, uniprot, codonrates]')
     parser.add_argument('-ra', '--rna_alphabet', type=str, help='rna_alphabet')
     parser.add_argument('-da', '--dna_alphabet', type=str, help='dna_alphabet')
-    parser.add_argument('-pm', '--protein_mutations', type=str, help='protein_mutations')
-    parser.add_argument('-rm', '--rna_mutations', type=str, help='rna_mutations')
-    parser.add_argument('-dm', '--dna_mutations', type=str, help='dna_mutations')
+    parser.add_argument('-pm', '--protein_mutations', type=str, help='protein_mutations [npm, pmo, srs]')
+    parser.add_argument('-rm', '--rna_mutations', type=str, help='rna_mutations [npm, pmo, srs]')
+    parser.add_argument('-dm', '--dna_mutations', type=str, help='dna_mutations [npm, pmo, srs]')
 
     #pop_size and num generations
     parser.add_argument('-ng', '--num_generations', type=int, help='number of generations')
@@ -82,8 +85,9 @@ def parse_args() -> argparse.Namespace:
     #contact calculatsion
     parser.add_argument('--contact_min_seq_dist', type=int, help='annealing step')
     parser.add_argument('--contact_cutoff', type=float, help='annealing step')
-    parser.add_argument('--lig_contact_cutoff', type=float, help='annealing step')
     parser.add_argument('--contact_min_plddt', type=float, help='annealing step')
+    parser.add_argument('--interface_plddt_cutoff', type=float, help='cutoff for interface plddt')
+    parser.add_argument('--lig_contact_cutoff', type=float, help='annealing step')
     parser.add_argument('--lig_contact_min_plddt', type=float, help='annealing step')
 
     #other
@@ -580,41 +584,6 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
 
     return init_gen
 
-
-def export_scoring(evolution_type) -> T.Callable:
-
-    score_weights = {
-        'PROTEIN_EVOLUTION':                    {"ptm": 0.4, "plddt": 0.2, "iptm": 0.0,  "iplddt": 0.0,  "cd": 0.4, "lcd": 0.0},
-        'NUCLEIC_EVOLUTION':                    {"ptm": 0.5, "plddt": 0.5, "iptm": 0.0,  "iplddt": 0.0,  "cd": 0.0,  "lcd": 0.0},
-        'PROTEIN_PROTEIN_EVOLUTION':            {"ptm": 0.2, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.25, "cd": 0.2, "lcd": 0.0},
-        'PROTEIN_PROTEIN_COEVOLUTION':          {"ptm": 0.2, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.25, "cd": 0.2, "lcd": 0.0},
-        'PROTEIN_NUCLEIC_EVOLUTION':            {"ptm": 0.2, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.25, "cd": 0.2, "lcd": 0.0},
-        'PROTEIN_NUCLEIC_COEVOLUTION':          {"ptm": 0.2, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.25, "cd": 0.2, "lcd": 0.0},
-        'NUCLEIC_NUCLEIC_EVOLUTION':            {"ptm": 0.2, "plddt": 0.2, "iptm": 0.3, "iplddt": 0.3, "cd": 0.0, "lcd": 0.0},
-        'NUCLEIC_NUCLEIC_COEVOLUTION':          {"ptm": 0.2, "plddt": 0.2, "iptm": 0.3, "iplddt": 0.3, "cd": 0.0, "lcd": 0.0},
-        'PROTEIN_LIGAND_EVOLUTION':             {"ptm": 0.1, "plddt": 0.1, "iptm": 0.2, "iplddt": 0.2, "cd": 0.2, "lcd": 0.2},
-        'NUCLEIC_LIGAND_EVOLUTION':             {"ptm": 0.1, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.3, "cd": 0.0, "lcd": 0.25},
-        'PROTEIN_PROTEIN_LIGAND_EVOLUTION':     {"ptm": 0.1, "plddt": 0.1, "iptm": 0.2, "iplddt": 0.2, "cd": 0.2, "lcd": 0.2},
-        'PROTEIN_PROTEIN_LIGAND_COEVOLUTION':   {"ptm": 0.1, "plddt": 0.1, "iptm": 0.2, "iplddt": 0.2, "cd": 0.2, "lcd": 0.2},
-        'PROTEIN_NUCLEIC_LIGAND_EVOLUTION':     {"ptm": 0.1, "plddt": 0.1, "iptm": 0.2, "iplddt": 0.2, "cd": 0.2, "lcd": 0.2},
-        'PROTEIN_NUCLEIC_LIGAND_COEVOLUTION':   {"ptm": 0.1, "plddt": 0.1, "iptm": 0.2, "iplddt": 0.2, "cd": 0.2, "lcd": 0.2},
-        'NUCLEIC_NUCLEIC_LIGAND_EVOLUTION':     {"ptm": 0.1, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.3, "cd": 0.0, "lcd": 0.25},
-        'NUCLEIC_NUCLEIC_LIGAND_COEVOLUTION':   {"ptm": 0.1, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.3, "cd": 0.0, "lcd": 0.25}
-                   }       
-
-    w = score_weights[evolution_type]
-
-    def scoring_function(ptm, plddt, iptm, iplddt, contact_density, ligand_contact_density,  penalty):
-
-        score =  (w["iptm"]*iptm + 
-                  w["iplddt"]*iplddt + 
-                  w["ptm"]*ptm + 
-                  w["plddt"]*plddt + 
-                  w["cd"]*contact_density + 
-                  w["lcd"]*ligand_contact_density) * penalty
-        return score
-
-    return scoring_function
 
 class ScoringFunction:
     

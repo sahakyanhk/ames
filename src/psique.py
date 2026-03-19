@@ -6,7 +6,7 @@ from pathlib import Path
 psique_binary_path = "https://github.com/franciscoadasme/psique/releases/latest/download/psique-linux.gz"
 
 # Get the directory of THIS module file
-module_dir = Path(__file__).parent.resolve()
+module_dir = Path(__file__).resolve()
 bin_path = module_dir.parent / 'bin' 
 psique_path = module_dir.parent / 'bin' / 'psique'
 
