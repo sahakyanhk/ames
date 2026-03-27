@@ -43,6 +43,8 @@
     "contact_min_plddt": 60.0,
     "interface_plddt_cutoff": 8.0,
     "lig_contact_min_plddt": 60.0,
+    "clash_overlap_threshold": 0.4,
+    "clash_min_seq_dist": 2,
     "engine": "af3",
     "norepeat": false,
     "max_seq_per_batch": null

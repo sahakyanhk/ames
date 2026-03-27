@@ -4,6 +4,7 @@ import shutil
 import random
 import copy
 import threading
+import numpy as np
 import pandas as pd
 from pathlib import Path
 from datetime import datetime
@@ -21,7 +22,6 @@ from psique import pypsique
 
 
 from amestools import (parse_args,
-                       DATA_DIR,
                        generate_loghead,
                        save_checkpoint,
                        update_beta,
@@ -31,7 +31,8 @@ from amestools import (parse_args,
                        batch_sequence_dataset, 
                        create_init_gen,
                        print_genlog,
-                       ScoringFunction
+                       ScoringFunction,
+                       DATA_DIR
                       )
 
 
@@ -234,8 +235,11 @@ def extract_results(gen_i: int,
                         'ptm': 0.0, 
                         'iplddt': 0.0,
                         'iptm': 0.0,
+                        "n_atoms": 0.0,
                         'cd': 0.0,
                         'lcd': 0.0,
+                        "n_clashes": 0.0,
+                        "clashscore": 0.0,
                         'score': score,
                         'sequence_data': seq_data, 
                         'mutation': mutation,
@@ -296,6 +300,17 @@ def extract_results(gen_i: int,
         else: 
             contact_density = 0.0
 
+        clashscore_row = pc.clashscore(pdb_txt, 
+                                        overlap_threshold=args.clash_overlap_threshold, 
+                                        exclude_hydrogen=True, 
+                                        chain="", 
+                                        min_seq_dist=args.clash_min_seq_dist)
+
+        num_clashes = clashscore_row['num_clashes']
+        num_atoms = clashscore_row['num_atoms']
+        clashscore = clashscore_row['clashscore']
+        clash_penalty = 1 - np.clip(clashscore_row['clashscore'], 0, 1)
+        
 
         if args.ligand:
             ligand_contact_density = pc.ligand_contact_density(pdb_txt, 
@@ -318,7 +333,7 @@ def extract_results(gen_i: int,
         contact_density = round(contact_density, 3)  
         ligand_contact_density = round(ligand_contact_density, 3)
         iplddt = round(iplddt, 3)
-
+        clashscore = round(clashscore, 3)
 
         # calculate penalties
         seq1_len_penalty =  1 - sigmoid(seq_data["seq1"]["len"], args.seq1_len_constr, 0.2)
@@ -328,7 +343,7 @@ def extract_results(gen_i: int,
         else: 
             seq2_len_penalty = 1
 
-        penalty = seq1_len_penalty * seq2_len_penalty #* max_alpha_penalty * max_beta_penalty
+        penalty = seq1_len_penalty * seq2_len_penalty  * clash_penalty#* max_alpha_penalty * max_beta_penalty
         
         #=============================== SCORING ===============================#
 
@@ -349,8 +364,11 @@ def extract_results(gen_i: int,
             'ptm': ptm, 
             'iplddt': iplddt,
             'iptm': iptm,
+            "n_atoms": num_atoms,
             'cd': contact_density,
             'lcd': ligand_contact_density,
+            "n_clashes": num_clashes,
+            "clashscore": clashscore,
             'score': score,
             'sequence_data': seq_data, 
             'mutation': mutation,

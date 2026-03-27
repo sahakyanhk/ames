@@ -44,6 +44,7 @@ struct ResidueIdHash {
 struct Atom {
     std::string atomName;
     std::string residueName;  // 3-letter residue code (e.g., ALA, GLY)
+    std::string element;      // Element symbol (e.g., "C", "N", "O", "S")
     int residueNumber;
     char chain;
     char insertionCode;       // PDB column 27 insertion code (' ' if none)
@@ -101,6 +102,28 @@ Atom parseAtomLine(const std::string& line) {
         atom.bfactor = 0.0;
     }
 
+    // Parse element symbol (columns 77-78, or derive from atom name)
+    if (line.length() >= 78) {
+        std::string elem = line.substr(76, 2);
+        elem.erase(0, elem.find_first_not_of(" "));
+        elem.erase(elem.find_last_not_of(" ") + 1);
+        if (!elem.empty()) {
+            elem[0] = std::toupper(static_cast<unsigned char>(elem[0]));
+            if (elem.size() > 1)
+                elem[1] = std::tolower(static_cast<unsigned char>(elem[1]));
+            atom.element = elem;
+        }
+    }
+    if (atom.element.empty()) {
+        for (size_t i = 0; i < atom.atomName.size(); ++i) {
+            if (std::isalpha(static_cast<unsigned char>(atom.atomName[i]))) {
+                atom.element = std::string(1, std::toupper(static_cast<unsigned char>(atom.atomName[i])));
+                break;
+            }
+        }
+        if (atom.element.empty()) atom.element = "C";
+    }
+
     return atom;
 }
 
@@ -123,6 +146,28 @@ inline double calculateDistance(const Atom& a1, const Atom& a2) {
     double dy = a1.y - a2.y;
     double dz = a1.z - a2.z;
     return std::sqrt(dx*dx + dy*dy + dz*dz);
+}
+
+// VDW radius lookup by element symbol (Bondi radii)
+inline double getVdwRadius(const std::string& element) {
+    static const std::unordered_map<std::string, double> radii = {
+        {"C",  1.70}, {"N",  1.55}, {"O",  1.52}, {"S",  1.80},
+        {"H",  1.20}, {"P",  1.80}, {"Se", 1.90}, {"F",  1.47},
+        {"Cl", 1.75}, {"Br", 1.85}, {"I",  1.98}, {"Zn", 1.39},
+        {"Fe", 1.63}, {"Mg", 1.73}, {"Ca", 1.74}, {"Na", 1.02},
+        {"K",  1.38}
+    };
+    auto it = radii.find(element);
+    if (it != radii.end()) return it->second;
+    return 1.70; // Default: carbon radius
+}
+
+// Check if two elements can form a hydrogen bond (donor-acceptor)
+inline bool canHbond(const std::string& elem1, const std::string& elem2) {
+    auto isDonorAcceptor = [](const std::string& e) {
+        return e == "N" || e == "O" || e == "S";
+    };
+    return isDonorAcceptor(elem1) && isDonorAcceptor(elem2);
 }
 
 // Check if atom's chain matches the comma-separated chain filter.
@@ -1045,6 +1090,227 @@ py::dict calculateContactOrder(const std::string& pdbText,
 }
 
 // ============================================================
+// Steric Clash Detection
+// ============================================================
+
+// Calculate clashscore (ChimeraX-style parameters).
+// Overlap = (VDW_A + VDW_B) - distance - hbond_allowance (for donor-acceptor pairs).
+// Exclusions: same-residue pairs, and same-chain pairs within min_seq_dist.
+py::dict calculateClashScore(const std::string& pdbText,
+                             double overlapThreshold = 0.6,
+                             double hbondAllowance = 0.4,
+                             bool excludeHydrogen = true,
+                             const std::string& chain = "",
+                             double minPlddt = 0.0,
+                             int minSeqDist = 2) {
+
+    std::vector<Atom> atoms = parseAtoms(pdbText, excludeHydrogen, chain);
+
+    if (atoms.empty()) {
+        py::dict result;
+        result["clashscore"] = 0.0;
+        result["num_clashes"] = 0;
+        result["num_atoms"] = 0;
+        return result;
+    }
+
+    ResidueIndex ridx = buildResidueIndex(atoms);
+    size_t n = atoms.size();
+    int clashCount = 0;
+
+    // Precompute VDW radii for all atoms
+    std::vector<double> vdwRadii(n);
+    for (size_t i = 0; i < n; ++i) {
+        vdwRadii[i] = getVdwRadius(atoms[i].element);
+    }
+
+    // Max possible VDW radius sum (Se+Se = 3.80)
+    double maxRadiusSum = 3.80;
+
+    for (size_t i = 0; i < n; ++i) {
+        for (size_t j = i + 1; j < n; ++j) {
+            // Skip same residue
+            if (ridx.atomToResidue[i] == ridx.atomToResidue[j]) {
+                continue;
+            }
+
+            // Sequence distance filter (same chain only)
+            if (minSeqDist > 0 && atoms[i].chain == atoms[j].chain) {
+                int seqDist = std::abs(atoms[i].residueNumber - atoms[j].residueNumber);
+                if (seqDist < minSeqDist) {
+                    continue;
+                }
+            }
+
+            // Atom-level pLDDT filter
+            if (atoms[i].bfactor < minPlddt || atoms[j].bfactor < minPlddt) {
+                continue;
+            }
+
+            double dist = calculateDistance(atoms[i], atoms[j]);
+
+            // Early skip: if distance > maxRadiusSum, no possible clash
+            if (dist > maxRadiusSum) {
+                continue;
+            }
+
+            // Compute overlap with H-bond allowance
+            double allowance = 0.0;
+            if (hbondAllowance > 0.0 && canHbond(atoms[i].element, atoms[j].element)) {
+                allowance = hbondAllowance;
+            }
+
+            double overlap = (vdwRadii[i] + vdwRadii[j]) - dist - allowance;
+
+            if (overlap >= overlapThreshold) {
+                clashCount++;
+            }
+        }
+    }
+
+    double clashscore = static_cast<double>(clashCount) / static_cast<double>(n);
+
+    py::dict result;
+    result["clashscore"] = clashscore;
+    result["num_clashes"] = clashCount;
+    result["num_atoms"] = static_cast<int>(n);
+
+    return result;
+}
+
+// ============================================================
+// Interface Quality (clashscore + pLDDT)
+// ============================================================
+
+// Evaluate the interface between two chain groups.
+// 1. Find interface residues (any atom within interfaceCutoff of the other chain)
+// 2. Collect all atoms belonging to interface residues from both chains
+// 3. Count clashes among those atoms (inter-chain + intra-chain interface)
+// 4. Compute average pLDDT of interface atoms
+py::dict calculateInterfaceQuality(const std::string& pdbText,
+                                    const std::string& chain1,
+                                    const std::string& chain2,
+                                    double interfaceCutoff = 8.0,
+                                    double overlapThreshold = 0.6,
+                                    double hbondAllowance = 0.4,
+                                    bool excludeHydrogen = true,
+                                    double minPlddt = 0.0,
+                                    int minSeqDist = 2) {
+
+    if (chain1.empty() || chain2.empty()) {
+        throw std::runtime_error("Both chain1 and chain2 must be specified");
+    }
+
+    std::vector<Atom> atoms1 = parseAtoms(pdbText, excludeHydrogen, chain1);
+    std::vector<Atom> atoms2 = parseAtoms(pdbText, excludeHydrogen, chain2);
+
+    if (atoms1.empty() || atoms2.empty()) {
+        py::dict result;
+        result["interface_clashscore"] = 0.0;
+        result["num_clashes"] = 0;
+        result["num_interface_atoms"] = 0;
+        result["num_interface_residues"] = 0;
+        return result;
+    }
+
+    // 1. Find interface residues
+    std::set<ResidueId> interfaceResidues;
+
+    for (size_t i = 0; i < atoms1.size(); ++i) {
+        for (size_t j = 0; j < atoms2.size(); ++j) {
+            double dist = calculateDistance(atoms1[i], atoms2[j]);
+            if (dist < interfaceCutoff) {
+                interfaceResidues.insert(atoms1[i].residueId());
+                interfaceResidues.insert(atoms2[j].residueId());
+            }
+        }
+    }
+
+    if (interfaceResidues.empty()) {
+        py::dict result;
+        result["interface_clashscore"] = 0.0;
+        result["num_clashes"] = 0;
+        result["num_interface_atoms"] = 0;
+        result["num_interface_residues"] = 0;
+        return result;
+    }
+
+    // 2. Collect all atoms from interface residues (both chains combined)
+    std::vector<Atom> ifaceAtoms;
+    for (const auto& atom : atoms1) {
+        if (interfaceResidues.count(atom.residueId())) {
+            ifaceAtoms.push_back(atom);
+        }
+    }
+    for (const auto& atom : atoms2) {
+        if (interfaceResidues.count(atom.residueId())) {
+            ifaceAtoms.push_back(atom);
+        }
+    }
+
+    size_t n = ifaceAtoms.size();
+    ResidueIndex ridx = buildResidueIndex(ifaceAtoms);
+
+    // 3. Count clashes among interface atoms
+    std::vector<double> vdwRadii(n);
+    for (size_t i = 0; i < n; ++i) {
+        vdwRadii[i] = getVdwRadius(ifaceAtoms[i].element);
+    }
+
+    double maxRadiusSum = 3.80;
+    int clashCount = 0;
+
+    for (size_t i = 0; i < n; ++i) {
+        for (size_t j = i + 1; j < n; ++j) {
+            // Skip same residue
+            if (ridx.atomToResidue[i] == ridx.atomToResidue[j]) {
+                continue;
+            }
+
+            // Sequence distance filter (same chain only)
+            if (minSeqDist > 0 && ifaceAtoms[i].chain == ifaceAtoms[j].chain) {
+                int seqDist = std::abs(ifaceAtoms[i].residueNumber - ifaceAtoms[j].residueNumber);
+                if (seqDist < minSeqDist) {
+                    continue;
+                }
+            }
+
+            // Atom-level pLDDT filter
+            if (ifaceAtoms[i].bfactor < minPlddt || ifaceAtoms[j].bfactor < minPlddt) {
+                continue;
+            }
+
+            double dist = calculateDistance(ifaceAtoms[i], ifaceAtoms[j]);
+
+            if (dist > maxRadiusSum) {
+                continue;
+            }
+
+            double allowance = 0.0;
+            if (hbondAllowance > 0.0 && canHbond(ifaceAtoms[i].element, ifaceAtoms[j].element)) {
+                allowance = hbondAllowance;
+            }
+
+            double overlap = (vdwRadii[i] + vdwRadii[j]) - dist - allowance;
+
+            if (overlap >= overlapThreshold) {
+                clashCount++;
+            }
+        }
+    }
+
+    double clashscore = static_cast<double>(clashCount) / static_cast<double>(n);
+
+    py::dict result;
+    result["interface_clashscore"] = clashscore;
+    result["num_clashes"] = clashCount;
+    result["num_interface_atoms"] = static_cast<int>(n);
+    result["num_interface_residues"] = static_cast<int>(interfaceResidues.size());
+
+    return result;
+}
+
+// ============================================================
 // Pybind11 Module
 // ============================================================
 
@@ -1296,4 +1562,64 @@ PYBIND11_MODULE(pdb_contacts, m) {
           "Returns:\n"
           "  List of tuples: (chain1, resnum1, resname1, atomname1,\n"
           "                   chain2, resnum2, resname2, atomname2, distance)");
+
+    m.def("clashscore", &calculateClashScore,
+          py::arg("pdb_text"),
+          py::arg("overlap_threshold") = 0.6,
+          py::arg("hbond_allowance") = 0.4,
+          py::arg("exclude_hydrogen") = true,
+          py::arg("chain") = "",
+          py::arg("min_plddt") = 0.0,
+          py::arg("min_seq_dist") = 2,
+          "Calculate clashscore (num_clashes / num_atoms, ChimeraX-style).\n\n"
+          "A steric clash occurs when two non-bonded atoms overlap by more than\n"
+          "the threshold. Overlap = (VDW_A + VDW_B) - distance - hbond_allowance.\n"
+          "The hbond_allowance is only subtracted for H-bond donor/acceptor pairs (N,O,S).\n"
+          "Same-residue pairs are always excluded. Adjacent-residue backbone noise is\n"
+          "filtered by min_seq_dist (default: 2 skips seq_dist < 2 on the same chain).\n"
+          "pLDDT filtering is atom-level: both atoms must have bfactor >= min_plddt.\n\n"
+          "Parameters:\n"
+          "  pdb_text: PDB format text\n"
+          "  overlap_threshold: Minimum VDW overlap in Angstroms (default: 0.6, ChimeraX default)\n"
+          "  hbond_allowance: Overlap allowance for H-bond pairs in Angstroms (default: 0.4)\n"
+          "  exclude_hydrogen: Skip hydrogen atoms (default: True)\n"
+          "  chain: Chain filter - comma-separated chain IDs, e.g. 'A,B' (default: all)\n"
+          "  min_plddt: Minimum pLDDT for both atoms in a clash (default: 0.0)\n"
+          "  min_seq_dist: Minimum sequence separation for same-chain pairs (default: 2)\n\n"
+          "Returns:\n"
+          "  Dictionary with keys:\n"
+          "    - clashscore: num_clashes / num_atoms\n"
+          "    - num_clashes: Total number of clashing atom pairs\n"
+          "    - num_atoms: Number of atoms evaluated");
+
+    m.def("interface_quality", &calculateInterfaceQuality,
+          py::arg("pdb_text"),
+          py::arg("chain1"),
+          py::arg("chain2"),
+          py::arg("interface_cutoff") = 8.0,
+          py::arg("overlap_threshold") = 0.6,
+          py::arg("hbond_allowance") = 0.4,
+          py::arg("exclude_hydrogen") = true,
+          py::arg("min_plddt") = 0.0,
+          py::arg("min_seq_dist") = 2,
+          "Calculate interface clashscore between two chain groups.\n\n"
+          "Identifies interface residues (any atom within interface_cutoff of the other chain),\n"
+          "then counts clashes among ALL interface atoms (both inter-chain and intra-chain\n"
+          "clashes within interface residues).\n\n"
+          "Parameters:\n"
+          "  pdb_text: PDB format text\n"
+          "  chain1: First chain group, e.g. 'A' or 'A,B'\n"
+          "  chain2: Second chain group, e.g. 'C' or 'B,C'\n"
+          "  interface_cutoff: Distance cutoff to define interface residues (default: 8.0)\n"
+          "  overlap_threshold: Minimum VDW overlap for a clash (default: 0.6)\n"
+          "  hbond_allowance: Overlap allowance for H-bond pairs (default: 0.4)\n"
+          "  exclude_hydrogen: Skip hydrogen atoms (default: True)\n"
+          "  min_plddt: Minimum pLDDT for both atoms in a clash (default: 0.0)\n"
+          "  min_seq_dist: Minimum sequence separation for same-chain pairs (default: 2)\n\n"
+          "Returns:\n"
+          "  Dictionary with keys:\n"
+          "    - interface_clashscore: num_clashes / num_interface_atoms\n"
+          "    - num_clashes: Total clashing atom pairs in the interface\n"
+          "    - num_interface_atoms: Number of atoms in interface residues\n"
+          "    - num_interface_residues: Number of interface residues");
 }

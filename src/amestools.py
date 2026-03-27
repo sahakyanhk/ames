@@ -89,7 +89,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--interface_plddt_cutoff', type=float, help='cutoff for interface plddt')
     parser.add_argument('--lig_contact_cutoff', type=float, help='annealing step')
     parser.add_argument('--lig_contact_min_plddt', type=float, help='annealing step')
-
+    parser.add_argument('--clash_overlap_threshold', type=float, help='cutoff for clash calculation in angstroms')
+    parser.add_argument('--clash_min_seq_dist', type=int, help='minimum sequence distance for clash calculation')
     #other
     parser.add_argument('--engine', type=str, help="structure prediction engine")
     parser.add_argument('--norepeat', action='store_true', help='do not generate and/or select the same sequences more than once')
@@ -468,8 +469,11 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
                                      "ptm", 
                                      "iplddt",
                                      "iptm", 
+                                     "n_atoms",
                                      "cd",
                                      "lcd",
+                                     "n_clashes",
+                                     "clashscore",
                                      "score", 
                                      "sequence_data", 
                                      "mutation", 
@@ -572,8 +576,11 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
     init_gen["ptm"] = 0.0
     init_gen["iplddt"] = 0.0
     init_gen["iptm"] = 0.0
+    init_gen["n_atoms"] = 0.0
     init_gen["cd"] = 0.0
     init_gen["lcd"] = 0.0
+    init_gen["n_clashes"] = 0.0
+    init_gen["clashscore"] = 0.0
     init_gen["score"] = 0.001 
     init_gen['sequence_data'] = seq_data        
     init_gen["mutation"] = "init_gen"
