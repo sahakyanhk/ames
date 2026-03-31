@@ -7,6 +7,7 @@ import ast
 from pathlib import Path
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+from amestools import DATA_DIR
 
 # Ensure src/ is on sys.path so sibling modules are importable from any directory
 _src_dir = str(Path(__file__).resolve().parent)
@@ -40,8 +41,8 @@ if args.outdir is None:
     args.outdir = os.path.dirname(args.log)
 
 
-protein_seqstat = Seqstat('data/pfam80_stat.json')
-rna_seqstat = Seqstat('data/rnacentral90_stat.json') #test! using prot stat for RNA
+protein_seqstat = Seqstat(str(DATA_DIR / 'pfam80_stat.json'))
+rna_seqstat = Seqstat(str(DATA_DIR / 'rnacentral90_stat.json'))
 seqstat = {"protein": protein_seqstat, "rna": rna_seqstat}
 
 
@@ -72,7 +73,7 @@ def extract_lineage(log) -> pd.DataFrame:
         df = ndx
         lineage = pd.concat([lineage, df], axis=0)
         ndx = ndx.prev_id.to_string(index=False)
-        i=+1
+        i+=1
         pbar.update(i)
     pbar.close()
     lineage = lineage.sort_index()
@@ -150,7 +151,10 @@ labels = {
     "seq1_len": "Seq1 len",
     "seq2_len": "Seq2 len",
     "seq1_stat": "Seq1 ngram loss",
-    "seq2_stat": "Seq2 ngram loss"
+    "seq2_stat": "Seq2 ngram loss",
+    "n_atoms": "Number of atoms",
+    "n_clashes": "Number of clashes",
+    "clashscore": "Clashscore"
         }
 
 
@@ -164,6 +168,7 @@ def make_plots(log, bestlog, lineage):
     for colname in log.keys(): 
         if colname in ['beta', 'plddt', 'ptm', 'iplddt', 'iptm', 
                        'cd', 'lcd', 'score', 'evolrate', 
+                       'n_atoms', 'n_clashes', 'clashscore',
                        'seq1_len', 'seq1_stat',
                        'seq2_len', 'seq2_stat']:
                 
@@ -225,6 +230,7 @@ def make_summary_plot(log, bestlog, lineage, simparam):
 
 def make_lineage_summary(lineage, simparam):
 
+    lineage = lineage.copy()
     lineage.index = lineage.index / simparam['pop_size']
     
     lw=1.0
@@ -330,16 +336,13 @@ log["sequence_data"] = log.sequence_data.apply(ast.literal_eval)
 log["seq1"] = log["sequence_data"].apply(lambda x: x["seq1"]["sequence"])
 log["seq1_ss"] = log["sequence_data"].apply(lambda x: x["seq1"]["ss"])
 log["seq1_len"] = log["sequence_data"].apply(lambda x: x["seq1"]["len"])
-log["seq1_stat"] = log["seq1"].apply(lambda x: seqstat[simparam["seq1_type"]].n_gram_prior(x))
-#log["seq1_stat"] = log["sequence_data"].apply(lambda x: x["seq1"]["seqstat"])
+log["seq1_stat"] = log["sequence_data"].apply(lambda x: x["seq1"].get("seqstat", 0))
 
 if simparam["seq2"]:
     log["seq2"] = log["sequence_data"].apply(lambda x: x["seq2"]["sequence"])
     log["seq2_ss"] = log["sequence_data"].apply(lambda x: x["seq2"]["ss"])
     log["seq2_len"] = log["sequence_data"].apply(lambda x: x["seq2"]["len"])
-    log["seq2_stat"] = log["seq2"].apply(lambda x: seqstat[simparam["seq2_type"]].n_gram_prior(x))
-#    log["seq2_stat"] = log["sequence_data"].apply(lambda x: x["seq2"]["seqstat"])
-
+    log["seq2_stat"] = log["sequence_data"].apply(lambda x: x["seq2"].get("seqstat", 0))
 
 print(f'#========= trajectory with {len(log)} records            ')
 
@@ -347,13 +350,12 @@ print(f'#========= trajectory with {len(log)} records            ')
 
 
 bestlog = log.groupby('gndx').head(1)
-bestlog.to_csv(os.path.join(outdir, 'bestlog.tsv'), sep='\t', index=False, header=True)
+bestlog.drop(columns=["sequence_data", "structure"]).to_csv(os.path.join(outdir, 'bestlog.tsv'), sep='\t', index=False, header=True)
 
 
 print('#================================================#')
 lineage = extract_lineage(log)
-
-lineage.to_csv(os.path.join(outdir, 'lineage.tsv'), sep='\t', index=False, header=True)
+lineage.drop(columns=["sequence_data", "structure"]).to_csv(os.path.join(outdir, 'lineage.tsv'), sep='\t', index=False, header=True)
 
 
 if args.nopdb:
