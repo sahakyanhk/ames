@@ -1,9 +1,14 @@
 #!/bin/bash
 set -e
 
+
+
+runs="${1:?Usage: $0 <runs_dir> [run_va]}"
+
+
+
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-runs=$1
 
 cd $runs
 
@@ -45,7 +50,7 @@ batch_summary="summary/summary_batch"
 
 mkdir -p "$summary_pdb" "$summary_seq" "$summary_log" "$summary_plot" "$summary_summary" "$summary_lineage_summary" "$batch_summary"
 
-for run in $(ls -d run*/); do 
+for run in run*/; do 
     base=${run::-1}
     echo -ne "$base\r"
 
@@ -58,15 +63,18 @@ for run in $(ls -d run*/); do
 
     cp "${run}/bestlog.tsv" "$summary_log/${base}_bestlog.tsv"
     cp "${run}/lineage.tsv" "$summary_log/${base}_lineage.tsv"
-    echo -e "$base\t$(tail -n 1 "${run}/lineage.tsv")" >> summarytsv
+    echo -e "$base\t$(tail -n 1 "${run}/lineage.tsv")" >> "${summarytsv}.tmp"
     
     get_last_seq "$summary_log/${base}_lineage.tsv" > "$summary_seq/${base}_final.fasta"
     
 done
     
-echo -e "run\\t$(head -n 1 "${run}/lineage.tsv")" > $summarytsv
-cat summarytsv >> $summarytsv && rm summarytsv 
+echo -e "run\t$(head -n 1 "${run}/lineage.tsv")" > "$summarytsv"
+cat "${summarytsv}.tmp" >> "$summarytsv" && rm "${summarytsv}.tmp"
 
+echo "clustering complexes with RNPclast"
+extract_interface.py -i "$summary_pdb" -o "i${summary_pdb}15" -c A -cut 15
+rnpclust -i "i${summary_pdb}15" -o summary/rnpclust15 -c 0.4
 
 echo "generating summary plots..."
 
