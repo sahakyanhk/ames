@@ -1,14 +1,9 @@
 #!/bin/bash
 set -e
 
-
-
 runs="${1:?Usage: $0 <runs_dir> [run_va]}"
 
-
-
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-
 
 cd $runs
 
