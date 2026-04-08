@@ -4,7 +4,7 @@ set -e
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 python "$REPO_ROOT/src/ames.py" --iseq1 protein:randoms:100:evolv \
-                                -pm rso \
+                                -pm pmo \
                                 -ps 100 -ng 10000 \
                                 --engine simulacrum \
                                 --nobackup \
