@@ -15,9 +15,9 @@ sbatch <<EOF
 source ~/.bashrc
 
 python "$REPO_ROOT/src/ames.py" --iseq1 'protein:randoms:65:evolv' --seq1_rate 1 \
-                                                      --seq1_len_constr 160 \
-                                                      --protein_alphabet codonrates \
-                                                      -pm pmo \
+                                        --seq1_len_constr 160 \
+                                        --protein_alphabet codonrates \
+                                        -pm pmo \
                                         -ps 100 \
                                         -ng 1000 \
                                         -b0 0.8 \
@@ -25,7 +25,6 @@ python "$REPO_ROOT/src/ames.py" --iseq1 'protein:randoms:65:evolv' --seq1_rate 1
                                         -bt 8.0 \
                                         -ann_s 250 \
                                         -ann_e 999 \
-                                        --nobackup \
                                         --engine esmfold \
                                         -o "$1"
 
