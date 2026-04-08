@@ -438,25 +438,18 @@ def batch_sequence_dataset(sequences: T.List[T.Tuple[str, dict]],
                            max_seq_per_batch: int = 25
                         ) -> T.Generator[T.Tuple[T.List[str], T.List[dict]], None, None]:
 
-    batch_headers, batch_sequences, num_sequences= [], [], 0 
+    batch_headers, batch_sequences = [], []
 
     for header, seq in sequences:
-
-        if num_sequences > max_seq_per_batch:
-            yield batch_headers, batch_sequences
-
-            batch_headers, batch_sequences, num_sequences= [], [], 0
-
         batch_headers.append(header)
         batch_sequences.append(seq)
-        num_sequences += 1
 
-        if num_sequences > pop_size: #TODO test this with args.pop_size / 4 and lartge pop size
-           yield batch_headers, batch_sequences
+        if len(batch_headers) >= max_seq_per_batch or len(batch_headers) >= pop_size:
+            yield batch_headers, batch_sequences
+            batch_headers, batch_sequences = [], []
 
-           batch_headers, batch_sequences, num_sequences= [], [], 0
-
-    yield batch_headers, batch_sequences
+    if batch_headers:
+        yield batch_headers, batch_sequences
 
 
 def create_init_gen(evolver, args) -> pd.DataFrame:
