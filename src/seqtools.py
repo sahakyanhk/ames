@@ -190,17 +190,20 @@ class Seqstat:
 
 
     def n_gram_prior(self, sequence):
+        
+        if len(sequence) < 5:
+            return 0.0
+        else:
+            P1_seq = self.calculate_probabilities(self.split2kmers(sequence, 1))
+            P2_seq = self.calculate_probabilities(self.split2kmers(sequence, 2))
+            P3_seq = self.calculate_probabilities(self.split2kmers(sequence, 3))
 
-        P1_seq = self.calculate_probabilities(self.split2kmers(sequence, 1))
-        P2_seq = self.calculate_probabilities(self.split2kmers(sequence, 2))
-        P3_seq = self.calculate_probabilities(self.split2kmers(sequence, 3))
+            # Calculate D_KL for each n-gram size
+            energy_uni = self.kullback_leibler(P1_seq, self.kmer_stat['monomers'])
+            energy_bi  = self.kullback_leibler(P2_seq, self.kmer_stat['dimers'])
+            energy_tri = self.kullback_leibler(P3_seq, self.kmer_stat['trimers'])
 
-        # Calculate D_KL for each n-gram size
-        energy_uni = self.kullback_leibler(P1_seq, self.kmer_stat['monomers'])
-        energy_bi  = self.kullback_leibler(P2_seq, self.kmer_stat['dimers'])
-        energy_tri = self.kullback_leibler(P3_seq, self.kmer_stat['trimers'])
-
-        # Total N-gram Energy
-        ngram_energy = energy_uni + energy_bi + energy_tri
-        return  round(float(ngram_energy), 3)
+            # Total N-gram Energy
+            ngram_energy = energy_uni + energy_bi + energy_tri
+            return  round(float(ngram_energy), 3)
         

@@ -24,6 +24,8 @@ from psique import pypsique
 from amestools import (parse_args,
                        generate_loghead,
                        save_checkpoint,
+                       sequence_signature,
+                       build_sequence_lookup,
                        update_beta,
                        gzip_str, 
                        sigmoid,
@@ -60,8 +62,7 @@ def fold_evolution_simulator() -> None:
     init_gen = create_init_gen(evolver, args)
     init_gen.to_csv(logpath, mode='a', index=False, header=True, sep='\t')
 
-    #ancestral_memory = set() #-> !!! TODO make ancestral memory a set of unique sequences !!! <-# 
-    ancestral_memory = init_gen  
+    sequence_lookup = build_sequence_lookup(init_gen)
     print_genlog(init_gen, args)
     
     #mutate seqs from init_gen and select the best N seqs for the next generation    
@@ -72,7 +73,7 @@ def fold_evolution_simulator() -> None:
         now = datetime.now()
         threads = []
         generated_sequences = []
-        mutation_collection = []
+        repeat_rows = []
         
         # dynamic temperature control for annealing
         if args.annealing and args.annealing_start <= gen_i <= args.annealing_end:
@@ -115,26 +116,39 @@ def fold_evolution_simulator() -> None:
 
 
             #check if the mutated seqeuece was already predicted
-            seqmask = ancestral_memory["sequence_data"] == seq_data 
+            seq_key = sequence_signature(seq_data)
+            repeat_row = sequence_lookup.get(seq_key)
             
             #if --norepeat and seq is in the ancestral_memory mutate it again
-            if args.norepeat and seqmask.any():  
-                while seqmask.any():
-                    seq1, mutation_data = evolver.mutate(args.seq1_type, sequence_data['seq1']['sequence'])
-                    seq_data["seq1"]["sequence"] = seq1 
-                    if args.seq2_evol:            
-                        seq2, mutation_data = evolver.mutate(args.seq2_type, sequence_data['seq2']['sequence'])
+            if args.norepeat and repeat_row is not None:
+                while repeat_row is not None:
+                    if mutate_seq1:
+                        seq1, mutation_data1 = evolver.mutate(args.seq1_type, sequence_data['seq1']['sequence'])
+                        seq_data["seq1"]["sequence"] = seq1
+                        seq_data["seq1"]["len"] = len(seq1)
+                    else:
+                        mutation_data1 = "none"
+
+                    if args.seq2_evol and mutate_seq2:
+                        seq2, mutation_data2 = evolver.mutate(args.seq2_type, sequence_data['seq2']['sequence'])
                         seq_data["seq2"]["sequence"] = seq2
-                    seqmask = ancestral_memory["sequence_data"] == seq_data 
+                        seq_data["seq2"]["len"] = len(seq2)
+                    else:
+                        mutation_data2 = "none"
+
+                    mutation_data = mutation_data1 + ':' + mutation_data2
+                    seq_key = sequence_signature(seq_data)
+                    repeat_row = sequence_lookup.get(seq_key)
 
             uid = f"g{gen_i}s{n}_{prev_id}_{mutation_data}"; n+=1 # gives an unique id even if the same sequence already exists            
 
-            if seqmask.any(): #if sequence already exits do not predict a structure again 
-                repeat = ancestral_memory[seqmask].drop_duplicates(subset=['sequence_data'], keep='last') 
-                new_gen = pd.concat([new_gen, repeat])
+            if repeat_row is not None: #if sequence already exits do not predict a structure again
+                repeat_rows.append(repeat_row.copy())
             else:
-                generated_sequences.append((uid, seq_data)) 
-                mutation_collection.append(mutation_data) 
+                generated_sequences.append((uid, seq_data))
+
+        if repeat_rows:
+            new_gen = pd.concat([new_gen, pd.DataFrame(repeat_rows)], axis=0, ignore_index=True)
 
         batched_sequence_data = batch_sequence_dataset(sequences = generated_sequences, 
                                                     pop_size = args.pop_size, 
@@ -170,7 +184,7 @@ def fold_evolution_simulator() -> None:
         # print each new generation in terminal 
         print_genlog(new_gen, args)  
 
-        ancestral_memory =  pd.concat([ancestral_memory, init_gen])
+        sequence_lookup.update(build_sequence_lookup(init_gen))
 
         #select the next generation 
         init_gen = evolver.select(new_gen, init_gen, args.pop_size, args.selection_mode, args.norepeat, args.beta)
@@ -225,8 +239,7 @@ def extract_results(gen_i: int,
 
         # imitate simulation without real structure prediction
         if args.engine == "simulacrum":
-            score = seq_data["seq1"]["seqstat"]
-
+            score = (15-seq_data["seq1"]["seqstat"]) / 15
             row_data = {
                         'gndx': gen_i,
                         'id': uid, 
@@ -438,8 +451,9 @@ elif args.engine == "esmfold":
 elif args.engine == "simulacrum":
     from simulacra import fold_evolution_simulacrum
 
+else:
+    raise ValueError("Unknown engine, available options are: af3, of3, esmfold, simulacrum")
 
 if __name__ == '__main__':
     fold_evolution_simulator()
-
 

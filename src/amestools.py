@@ -378,6 +378,19 @@ def update_beta(args):
 def gc_content(seq:str) -> float:
     return round(((seq.count('C') + seq.count('G')) / len(seq)), 3)
 
+def sequence_signature(sequence_data: dict) -> str:
+    seq1 = sequence_data["seq1"]["sequence"]
+    if "seq2" in sequence_data:
+        seq2 = sequence_data["seq2"]["sequence"]
+        return f"{seq1}:{seq2}"
+    
+    return seq1
+
+def build_sequence_lookup(gen_df: pd.DataFrame) -> dict[str, dict]:
+    sequence_lookup = {}
+    for row in gen_df.to_dict("records"):
+        sequence_lookup[sequence_signature(row["sequence_data"])] = row
+    return sequence_lookup
 
 def backup_output(directory_path, backup_suffix=None, max_backups=None) -> T.Optional[str]:
 
