@@ -5,7 +5,6 @@ sbatch <<EOF
 #!/bin/sh
 #SBATCH --job-name=$(basename $1)
 #SBATCH --cpus-per-task=8
-#SBATCH --qos=gpunlm2025.2
 #SBATCH --mem=50g
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:a100:1
