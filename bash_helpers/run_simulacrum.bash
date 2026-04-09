@@ -16,5 +16,5 @@ python "$REPO_ROOT/src/ames.py" --iseq1 protein:randoms:100:evolv \
                                 -o "$1"
 
 
-python "$REPO_ROOT/src/visual_ames.py" -l "$1"/progress.log 
+python "$REPO_ROOT/src/visualames.py" -l "$1"/progress.log 
 
