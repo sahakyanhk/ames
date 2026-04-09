@@ -18,7 +18,7 @@ fi
 
 if [ "$2" == "run_va" ]; then
     for dir in `ls -d run*/`; do 
-        python $REPO_ROOT/src/visual_ames.py -l  $dir/progress.log  ; 
+        python $REPO_ROOT/src/visualames.py -l  $dir/progress.log  ; 
     done
 fi
 
