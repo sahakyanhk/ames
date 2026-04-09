@@ -1,3 +1,15 @@
 [build-system]
 requires = ["setuptools", "pybind11"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "ames"
+version = "0.0.1"
+requires-python = ">=3.10"
+description = "atomistic molecular evolution simulator"
+readme = "README.md"
+dependencies = [
+    "numpy>=2.0",
+    "pandas>=2.2.2",
+    "pybind11==3.0.1",
+]
