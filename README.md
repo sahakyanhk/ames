@@ -1,17 +1,23 @@
 # AMES: atomistic molecular evolution simulator
 
-### Experimental code for simulating structural evolution of protein and RNA fold and and their complexes.
+### Experimental code for simulating structural evolution of protein, RNA and their complexes with atomistic models.
 
 ## Installation
 
 ```
 git clone https://github.com/sahakyanhk/ames.git && cd ames
-pip install numpy pandas pybind11 setuptools matplotlib 
+pip install numpy pandas pybind11 setuptools matplotlib tqdm 
 pip install . # install pdb_contacts
 ```
-Install [alphafold3](https://github.com/google-deepmind/alphafold3/blob/main/docs/installation.md), [openfold3](https://github.com/aqlaboratory/openfold-3?tab=readme-ov-file#quick-start-for-inference), or [transformers](https://github.com/huggingface/transformers?tab=readme-ov-file#installation) to use ESMFold
+Install [AlphaFold3](https://github.com/google-deepmind/alphafold3/blob/main/docs/installation.md), [OpenFold3](https://github.com/aqlaboratory/openfold-3?tab=readme-ov-file#quick-start-for-inference), or ESMFold via [Transformers](https://github.com/huggingface/transformers?tab=readme-ov-file#installation) 
 
 ## Quick Start
+
+**Dry run** for debugging only, this does not require any structure prediction engine. 
+```
+python src/ames.py --pop_size 50 --num_generations 100 --engine simulacrum -o outputs/simulacrum_test
+```
+
 
 **Single protein fold evolution with ESMFold**
 ```
@@ -30,7 +36,7 @@ python src/visualames.py -l outputs/esmfold_test/progress.log
 
 Use [AMESViewer](https://github.com/sahakyanhk/ames_viewer) to visualize and analyse the simulation trajectories in [ChimeraX](https://www.cgl.ucsf.edu/chimerax/)
 
-**Evolution of a protein interacting with tRNA**
+**Evolution of a protein interacting with tRNA AlphaFold3**
 ```
 python src/ames.py --iseq1 'protein:randoms:65:evolv' --seq1_rate 0.5 \
                     --iseq2 'rna:randoms:24:evolv' --seq2_rate 1 \
@@ -44,10 +50,16 @@ python src/ames.py --iseq1 'protein:randoms:65:evolv' --seq1_rate 0.5 \
 python src/visualames.py -l outputs/protein_rna_test/progress.log
 ``` 
 
-Submit a batch job with SLURM:
+An example of batch job with SLURM 
 ```
-for i in {01..09};do bash_helpers/run_ames.sbatch outputs/batch1/run$i; done
+for i in {01..09}; do bash_helpers/run_ames.sbatch outputs/batch1/run$i; done
 ```
+
+When the batch jobs are done, use `bash_helpers/summarize_batch.sh` to summarize the results. See [rnpclust](https://github.com/sahakyanhk/rnpclust) for RNA-protein complex clustering
+```
+bash_helpers/summarize_batch.sh outputs/batch1 
+```
+
 
 ## Settings
 
@@ -59,7 +71,7 @@ for i in {01..09};do bash_helpers/run_ames.sbatch outputs/batch1/run$i; done
 use the same settings for seq2 with `--iseq2`, `--seq2_init`, `--seq2_type`, `--seq2_len`, `--seq2_evol`, `--seq2_rate` \
 `--iseq1` 1st seq info to initiate simulation [protein, rna, dna]:[random, randoms]:[sequence_length]:[evolv, static]. e.g., "protein:random:25:evolv" \
 `--seq1_init` 1st seqence, can be actual sequence, `random` - the same random sequence for entire populations, `randoms` - each sequence in the population is random \
-`--seq1_type` 1st seq type [proten, rna, dna] \
+`--seq1_type` 1st seq type [protein, rna, dna] \
 `--seq1_len` if `random`(s) is used, provide random sequence length, ignore if sequence is provided \
 `--seq1_evol` does seq1 evolve [True/False], store_true \
 `--seq1_rate` probability of 1st sequence to mutate [0,1] \
@@ -67,9 +79,9 @@ use the same settings for seq2 with `--iseq2`, `--seq2_init`, `--seq2_type`, `--
 **temperature control** \
 `-ann`,`--annealing` Use temperature annealing, see `-b0`, `-bt`, `-ann_s`, `-ann_e`, or `-ann_step` for annealing setup \
 `-b0`, `--beta` Selection strength, the higher beta the lower temperature and stronger selection \
-`-bt`, `--beta_target` Target temerature if annealing is used \
+`-bt`, `--beta_target` Target temperature if annealing is used \
 `-ann_s`, `--annealing_start`, Generation when annealing starts \
-`-ann_e`,`--annealing_end`, Generation when annealing reaches target temerature \
+`-ann_e`,`--annealing_end`, Generation when annealing reaches target temperature \
 `-ann_step`,`--annealing_step`, Annealing step, calculated automatically if `-ann_s ` and `-ann_e` are provided \
 
 **mutation setup** \
@@ -86,7 +98,7 @@ use the same settings for seq2 with `--iseq2`, `--seq2_init`, `--seq2_type`, `--
 `-o`,`--outpath` output dir name where log and checkpoint files are saved, "ames_output/output" by default` \
 `-l`, `--log` output log file name, "progress.log" by default` \
 `-c`, `--ckp` checkpoint file name, "progress.ckp" by default` \    
-`-ckpi`, `--checkpoint_interval` chechpoint saving frequency generations \
+`-ckpi`, `--checkpoint_interval` checkpoint saving frequency generations \
 `--nobackup`, action=`store_true` overwrite output if exists` \
 
 **constraints** \
@@ -105,5 +117,5 @@ use the same settings for seq2 with `--iseq2`, `--seq2_init`, `--seq2_type`, `--
 `--clash_min_seq_dist` minimum sequence distance for clash calculation \
 `--norepeat` do not generate and/or select the same sequences more than once, off by default \
 `--max_seq_per_batch` max_seq_per_batch, half or population size by default \
-
-see [simparam.json](https://github.com/sahakyanhk/ames/blob/dev/src/data/simparam.json) for full list of settings and default values
+`--config` json file with settings \
+see [simparam.json](https://github.com/sahakyanhk/ames/blob/dev/src/data/simparam.json) for full list of settings and default values. 
