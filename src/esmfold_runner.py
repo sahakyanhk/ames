@@ -10,7 +10,18 @@ model = model.eval().to('cuda')
 
 model.trunk.set_chunk_size(2048) # 5120 works fine with A100
 
-#model.infer(['AAAAA', 'YYYYYY', 'MTCAGGGGPLA'])
+
+def ames_to_esmfold(seq_data_list: list[dict]) -> list[str]:
+    
+    """prepares sequences in generation dataframe for esmfold input"""
+
+    if isinstance(seq_data_list, dict):
+        seq_data_list = [seq_data_list]
+
+    inputs = [data["seq1"]["sequence"] for data in seq_data_list]
+    
+    return inputs
+
 
 #https://github.com/aqlaboratory/openfold/blob/main/openfold/utils/loss.py#L610
 def _calculate_bin_centers(boundaries: torch.Tensor):
@@ -87,6 +98,8 @@ def esm2data(esm_out):
 
 
 def esmfold_runner(sequence_list: str | list[str]) -> tuple[list[str], list[float], list[float], list[float]]:
+
+    sequence_list = ames_to_esmfold(sequence_list) 
 
     output = model.infer(sequence_list)
     pdbs, ptms, mean_plddts = esm2data(output)
