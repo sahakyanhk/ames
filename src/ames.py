@@ -158,7 +158,7 @@ def fold_evolution_simulator() -> None:
         for headers, sequence_data_batch in batched_sequence_data:
             
             if args.engine in ["af3", "of3", "esmfold"]:
-                structure_predictor_ouptut = structure_predictor(adapter(sequence_data_batch, args))  # type: ignore
+                structure_predictor_ouptut = structure_predictor(sequence_data_batch)  # type: ignore
 
             elif args.engine == "simulacrum":
                 structure_predictor_ouptut = fold_evolution_simulacrum(sequence_data_batch, args) #imitate empty of3/af3 engine output
@@ -238,7 +238,7 @@ def extract_results(gen_i: int,
 
 
         # imitate simulation without real structure prediction
-        if args.engine == "simulacrum":
+        if args.engine == "simulacrum" or pdb_txt == "STRUCTURESIMULACRUM":
             score = (15-seq_data["seq1"]["seqstat"]) / 15
             row_data = {
                         'gndx': gen_i,
@@ -440,9 +440,9 @@ if args.engine == "af3":
     from adapters import ames_to_af3 as adapter
     from af3_runner import af3_runner as structure_predictor
 
-# elif args.engine == "of3":
-#     from adapters import ames_to_of3 as adapter
-#     from of3_runner import of3_runner as structure_predictor
+elif args.engine == "of3":
+    from adapters import ames_to_of3 as adapter
+    from openfold3_runner import openfold3_runner as structure_predictor
 
 elif args.engine == "esmfold":
     from adapters import ames_to_esmfold as adapter

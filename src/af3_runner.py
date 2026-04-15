@@ -47,6 +47,62 @@ from pdbutils import cif2pdb
 # STEP 1: Create Fold Input (supports protein, RNA, DNA)
 # ============================================================================
 
+def ames_to_af3(seq_data_list) -> list[list[dict]]:
+    
+    """prepares sequences in generation dataframe for af3 input"""
+
+    if isinstance(seq_data_list, dict):
+        seq_data_list = [seq_data_list]
+
+    if "seq2" in seq_data_list[0]:
+        inputs = [[{"type": data["seq1"]['type'], "sequence": data["seq1"]["sequence"], "id": "A"},
+                   {"type": data["seq2"]['type'], "sequence": data["seq2"]["sequence"], "id": "B"}] for data in seq_data_list]
+
+    else:
+        inputs = [[{"type": data["seq1"]['type'], "sequence": data["seq1"]["sequence"], "id": "A"}] for data in seq_data_list]
+
+
+    if "ligand" in seq_data_list[0]:
+
+        for inp in inputs:
+            chain_id = inp[-1]["id"]
+            for lig in seq_data_list[0]['ligand']:
+                chain_id = chr(ord(chain_id) + 1)
+
+                #if lig in ccd_list:
+                inp.append({"type":"ligand", 'ccd_code': lig, "id": chain_id}) 
+        
+    return inputs
+
+def ames_to_af3(seq_data_list) -> list[list[dict]]:
+    
+    """prepares sequences in generation dataframe for af3 input"""
+
+    if isinstance(seq_data_list, dict):
+        seq_data_list = [seq_data_list]
+
+    if "seq2" in seq_data_list[0]:
+        inputs = [[{"type": data["seq1"]['type'], "sequence": data["seq1"]["sequence"], "id": "A"},
+                   {"type": data["seq2"]['type'], "sequence": data["seq2"]["sequence"], "id": "B"}] for data in seq_data_list]
+
+    else:
+        inputs = [[{"type": data["seq1"]['type'], "sequence": data["seq1"]["sequence"], "id": "A"}] for data in seq_data_list]
+
+
+    if "ligand" in seq_data_list[0]:
+
+        for inp in inputs:
+            chain_id = inp[-1]["id"]
+            for lig in seq_data_list[0]['ligand']:
+                chain_id = chr(ord(chain_id) + 1)
+
+                #if lig in ccd_list:
+                inp.append({"type":"ligand", 'ccd_code': lig, "id": chain_id}) 
+        
+    return inputs
+
+
+
 def create_fold_input(
     seq_list: list[dict],
     name: str = "prediction",
@@ -329,6 +385,9 @@ def af3_runner(input_fold_list: list[dict] | list[list[dict]]) -> tuple[list[str
     results = {}
     i = 0 
 
+    input_fold_list = ames_to_af3(input_fold_list)  # type: ignore
+
+
     for input_dict in input_fold_list:
 
         i+=1
@@ -347,7 +406,6 @@ def af3_runner(input_fold_list: list[dict] | list[list[dict]]) -> tuple[list[str
     iptms = []
     plddts = []
     structures = []
-    ranking_scores = []
     
     for key in results.keys(): #for each input find the prediction with the highest ranking score
         
