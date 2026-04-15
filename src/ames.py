@@ -437,15 +437,12 @@ else:
 
 
 if args.engine == "af3":
-    from adapters import ames_to_af3 as adapter
     from af3_runner import af3_runner as structure_predictor
 
 elif args.engine == "of3":
-    from adapters import ames_to_of3 as adapter
     from openfold3_runner import openfold3_runner as structure_predictor
 
 elif args.engine == "esmfold":
-    from adapters import ames_to_esmfold as adapter
     from esmfold_runner import esmfold_runner as structure_predictor
 
 elif args.engine == "simulacrum":
