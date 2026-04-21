@@ -27,7 +27,7 @@ from amestools import (parse_args,
                        sequence_signature,
                        build_sequence_lookup,
                        update_beta,
-                       gzip_str, 
+                       compress_str, 
                        sigmoid,
                        backup_output, 
                        batch_sequence_dataset, 
@@ -161,7 +161,7 @@ def fold_evolution_simulator() -> None:
                 structure_predictor_ouptut = structure_predictor(sequence_data_batch)  # type: ignore
 
             elif args.engine == "simulacrum":
-                structure_predictor_ouptut = fold_evolution_simulacrum(sequence_data_batch, args) #imitate empty of3/af3 engine output
+                structure_predictor_ouptut = fold_evolution_simulacrum(sequence_data_batch) #imitate empty of3/af3 engine output
 
 
 
@@ -176,7 +176,8 @@ def fold_evolution_simulator() -> None:
                 t.join()
         
         seconds_per_generation = (datetime.now() - now).total_seconds()
-        print(f"""
+        if gen_i % 1 == 0:
+            print(f"""
 #{seconds_per_generation:.1f}s per generation
 #{86400 / seconds_per_generation:.0f} generations per day
 #{86400 / seconds_per_generation * args.pop_size:.0f} mutations per day""")
@@ -193,6 +194,9 @@ def fold_evolution_simulator() -> None:
 
         if gen_i % args.checkpoint_interval == 0:
             save_checkpoint(init_gen, args)
+    
+    #save final generation
+    save_checkpoint(init_gen, args)
  
 #==================================== EVOLVER =====================================#
 #==================================================================================#
@@ -386,7 +390,7 @@ def extract_results(gen_i: int,
             'sequence_data': seq_data, 
             'mutation': mutation,
             'prev_id': prev_id,
-            'structure': gzip_str(pdb_txt),
+            'structure': compress_str(pdb_txt),
         }
 
 
@@ -437,10 +441,10 @@ else:
 
 
 if args.engine == "af3":
-    from af3_runner import af3_runner as structure_predictor
+    from alphafold3_runner import af3_runner as structure_predictor
 
 elif args.engine == "of3":
-    from openfold3_runner import openfold3_runner as structure_predictor
+    from openfold3seq_runner import of3_runner as structure_predictor
 
 elif args.engine == "esmfold":
     from esmfold_runner import esmfold_runner as structure_predictor

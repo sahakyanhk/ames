@@ -1,6 +1,5 @@
 import os
 import sys
-import gzip
 import base64
 import json
 import uuid
@@ -9,6 +8,7 @@ import argparse
 import numpy as np
 import pandas as pd
 import typing as T
+import zstandard as zstd
 from pathlib import Path
 from datetime import datetime
 
@@ -359,13 +359,13 @@ def generate_loghead(args) -> str:
     return loghead
 
 # compress and decompres strings:
-def gzip_str(cif_str: str) -> str:
-    compressed = gzip.compress(cif_str.encode('utf-8'))
+def compress_str(cif_str: str) -> str:
+    compressed = zstd.compress(cif_str.encode('utf-8'))
     return base64.b64encode(compressed).decode('ascii')
 
-def ungzip_str(b64_str: str) -> str:
+def decompress_str(b64_str: str) -> str:
     compressed = base64.b64decode(b64_str)
-    return gzip.decompress(compressed).decode('utf-8')
+    return zstd.decompress(compressed).decode('utf-8')
 
 
 def sigmoid(x:T.Union[float, int], L0=0.0, c=0.1) -> float:

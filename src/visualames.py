@@ -14,7 +14,7 @@ _src_dir = str(Path(__file__).resolve().parent)
 if _src_dir not in sys.path:
     sys.path.insert(0, _src_dir)
 
-from amestools import read_header, ungzip_str
+from amestools import read_header, decompress_str
 from pdbutils import extract_backbone
 from seqtools import Seqstat
 
@@ -119,11 +119,11 @@ def extract_structures(log, outdir):
     
     decoded_frames = []
 
-    for id, gziped_structure in zip(log.gndx[1:], log.structure[1:]):
+    for id, compressed_structure in zip(log.gndx[1:], log.structure[1:]):
 
         try:
 
-            structure_txt = ungzip_str(gziped_structure)
+            structure_txt = decompress_str(compressed_structure)
             with open(f"{structures_path}/{id:04d}.pdb", "w") as f:
                 f.write(structure_txt)
 
