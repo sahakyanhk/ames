@@ -240,10 +240,26 @@ def extract_results(gen_i: int,
             else:
                 seq_data["seq2"]["seqstat"] = rna_seqstat.n_gram_prior(seq_data["seq2"]["sequence"])
 
+        # calculate length constraints
+        seq1_min_constr = sigmoid(seq_data["seq1"]["len"], args.seq1_min_len, 0.5)
+        seq1_max_constr = 1 - sigmoid(seq_data["seq1"]["len"], args.seq1_max_len, 0.08)
+
+        seq1_len_penalty = seq1_min_constr * seq1_max_constr
+        
+        if args.seq2:
+            seq2_min_constr = sigmoid(seq_data["seq2"]["len"], args.seq2_min_len, 0.5)
+            seq2_max_constr = 1 - sigmoid(seq_data["seq2"]["len"], args.seq2_max_len, 0.08)
+            seq2_len_penalty = seq2_min_constr * seq2_max_constr
+            
+        else: 
+            seq2_len_penalty = 1
+
 
         # imitate simulation without real structure prediction
         if args.engine == "simulacrum" or pdb_txt == "STRUCTURESIMULACRUM":
             score = (15-seq_data["seq1"]["seqstat"]) / 15
+
+            score = seq1_len_penalty * seq2_len_penalty
             row_data = {
                         'gndx': gen_i,
                         'id': uid, 
@@ -351,14 +367,6 @@ def extract_results(gen_i: int,
         ligand_contact_density = round(ligand_contact_density, 3)
         iplddt = round(iplddt, 3)
         clashscore = round(clashscore, 3)
-
-        # calculate penalties
-        seq1_len_penalty =  1 - sigmoid(seq_data["seq1"]["len"], args.seq1_len_constr, 0.2)
-        
-        if args.seq2:
-            seq2_len_penalty =  1 - sigmoid(seq_data["seq2"]["len"], args.seq2_len_constr, 0.2)
-        else: 
-            seq2_len_penalty = 1
 
         penalty = seq1_len_penalty * seq2_len_penalty  * clash_penalty#* max_alpha_penalty * max_beta_penalty
         

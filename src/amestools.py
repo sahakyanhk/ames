@@ -1,6 +1,5 @@
 import os
 import sys
-import base64
 import json
 import uuid
 import shutil
@@ -8,6 +7,7 @@ import argparse
 import numpy as np
 import pandas as pd
 import typing as T
+import base64
 import zstandard as zstd
 from pathlib import Path
 from datetime import datetime
@@ -77,8 +77,10 @@ def parse_args() -> argparse.Namespace:
     #ligand setup
     parser.add_argument('--ligand', help="ligand(s) provided in slmiles of ccd format separated with commas")
     #constraints
-    parser.add_argument('--seq1_len_constr', type=int, help='constain seq1 length')
-    parser.add_argument('--seq2_len_constr', type=int, help='constain seq2 length')
+    parser.add_argument('--seq1_min_len', type=int, help='seq1 minimal length constraint')
+    parser.add_argument('--seq1_max_len', type=int, help='seq1 maximal length constraint')
+    parser.add_argument('--seq2_min_len', type=int, help='seq2 minimal length constraint')
+    parser.add_argument('--seq2_max_len', type=int, help='seq2 maximal length constraint')
     #outputs
     parser.add_argument('-o','--outpath', type=str, help='output dir name where log and checkpoint files are saved, "ames_output/output" by default')
     parser.add_argument('-l', '--log', type=str, help='output log file name, "progress.log" by default')
