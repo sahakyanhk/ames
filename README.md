@@ -6,36 +6,12 @@
 
 ```
 git clone https://github.com/sahakyanhk/ames.git && cd ames
-pip install numpy pandas pybind11 setuptools matplotlib tqdm 
+pip install numpy pandas pybind11 setuptools matplotlib tqdm zstandard
 pip install . # install pdb_contacts
 ```
 Install [AlphaFold3](https://github.com/google-deepmind/alphafold3/blob/main/docs/installation.md), [OpenFold3](https://github.com/aqlaboratory/openfold-3?tab=readme-ov-file#quick-start-for-inference), or ESMFold via [Transformers](https://github.com/huggingface/transformers?tab=readme-ov-file#installation) 
 
 ## Quick Start
-
-**Dry run** for debugging only, this does not require any structure prediction engine. 
-```
-python src/ames.py --pop_size 50 --num_generations 100 --engine simulacrum -o outputs/simulacrum_test
-```
-
-
-**Single protein fold evolution with ESMFold**
-```
-python src/ames.py --iseq1 'protein:randoms:65:evolv' --seq1_rate 1 \
-                    -pm pmo -ps 100 -ng 1000 \
-                    --engine esmfold \
-                    -o outputs/esmfold_test
-```
-
-
-Use `src/visualames.py` to process trajectory and run basic analyses.\
-This will extract main lineage, structures in pdb format and generate summary plots
-```
-python src/visualames.py -l outputs/esmfold_test/progress.log
-```
-
-Use [AMESViewer](https://github.com/sahakyanhk/ames_viewer) to visualize and analyse the simulation trajectories in [ChimeraX](https://www.cgl.ucsf.edu/chimerax/)
-
 **Evolution of a protein interacting with tRNA AlphaFold3**
 ```
 python src/ames.py --iseq1 'protein:randoms:65:evolv' --seq1_rate 0.5 \
@@ -46,18 +22,47 @@ python src/ames.py --iseq1 'protein:randoms:65:evolv' --seq1_rate 0.5 \
                     -b0 0.8 -bt 8.0 \
                     --engine af3 \
                     -o outputs/protein_rna_test
+```
 
+Use `src/visualames.py` to process trajectory and run basic analyses.\
+This will extract main lineage, structures in pdb format and generate summary plots
+
+```
 python src/visualames.py -l outputs/protein_rna_test/progress.log
 ``` 
+Use [AMESViewer](https://github.com/sahakyanhk/ames_viewer) to visualize and analyse the simulation trajectories in [ChimeraX](https://www.cgl.ucsf.edu/chimerax/)
 
-An example of batch job with SLURM 
+
+#
+**Single protein fold evolution with ESMFold**
+```
+python src/ames.py --iseq1 'protein:randoms:65:evolv' --seq1_rate 1 \
+                    -pm pmo -ps 100 -ng 1000 \
+                    --engine esmfold \
+                    -o outputs/esmfold_test
+
+
+python src/visualames.py -l outputs/esmfold_test/progress.log
+```
+
+
+#
+**Running an batch of simulations on HPC** with Slurm
 ```
 for i in {01..09}; do bash_helpers/run_ames.sbatch outputs/batch1/run$i; done
 ```
 
-When the batch jobs are done, use `bash_helpers/summarize_batch.sh` to summarize the results. See [rnpclust](https://github.com/sahakyanhk/rnpclust) for RNA-protein complex clustering
+When the batch jobs are done, use `bash_helpers/summarize_batch.sh` to summarize the results. Install [rnpclust](https://github.com/sahakyanhk/rnpclust) for clustering RNA-protein complexes.
+
 ```
 bash_helpers/summarize_batch.sh outputs/batch1 
+```
+
+
+#
+**Dry run** for debugging working without structure prediction engine. 
+```
+python src/ames.py --pop_size 50 --num_generations 100 --engine simulacrum -o outputs/simulacrum_test
 ```
 
 
@@ -65,16 +70,16 @@ bash_helpers/summarize_batch.sh outputs/batch1
 
 **simulation control** \
 `-ng`, `--num_generations` Total number of generations in the simulation \
-`-ps`, `--pop_size` Population size in each generation \
+`-ps`, `--pop_size` Population size in each generation 
 
 **sequence setup** \
-use the same settings for seq2 with `--iseq2`, `--seq2_init`, `--seq2_type`, `--seq2_len`, `--seq2_evol`, `--seq2_rate` \
 `--iseq1` 1st seq info to initiate simulation [protein, rna, dna]:[random, randoms]:[sequence_length]:[evolv, static]. e.g., "protein:random:25:evolv" \
 `--seq1_init` 1st seqence, can be actual sequence, `random` - the same random sequence for entire populations, `randoms` - each sequence in the population is random \
 `--seq1_type` 1st seq type [protein, rna, dna] \
 `--seq1_len` if `random`(s) is used, provide random sequence length, ignore if sequence is provided \
 `--seq1_evol` does seq1 evolve [True/False], store_true \
 `--seq1_rate` probability of 1st sequence to mutate [0,1] \
+use the same settings for seq2 with `--iseq2`, `--seq2_init`, `--seq2_type`, `--seq2_len`, `--seq2_evol`, `--seq2_rate` 
 
 **temperature control** \
 `-ann`,`--annealing` Use temperature annealing, see `-b0`, `-bt`, `-ann_s`, `-ann_e`, or `-ann_step` for annealing setup \
@@ -82,28 +87,36 @@ use the same settings for seq2 with `--iseq2`, `--seq2_init`, `--seq2_type`, `--
 `-bt`, `--beta_target` Target temperature if annealing is used \
 `-ann_s`, `--annealing_start`, Generation when annealing starts \
 `-ann_e`,`--annealing_end`, Generation when annealing reaches target temperature \
-`-ann_step`,`--annealing_step`, Annealing step, calculated automatically if `-ann_s ` and `-ann_e` are provided \
+`-ann_step`,`--annealing_step`, Annealing step, calculated automatically if `-ann_s ` and `-ann_e` are provided 
 
 **mutation setup** \
-`-pm`, `-rm`, `-dm` protein, RNA and DNA mutations types \
+`-pm`, `-rm`, `-dm` or `--protein_mutations`, `--rna_mutations`, `--dna_mutations` protein, RNA and DNA mutations types \
 &ensp;&ensp;&ensp;&ensp;`npm` substitutions, insertions, deletions, permutations and duplications \
 &ensp;&ensp;&ensp;&ensp;`pmo` substitutions and single residues indels \
-&ensp;&ensp;&ensp;&ensp;`rso` residue substitutions only \
+&ensp;&ensp;&ensp;&ensp;`rso` residue substitutions only 
+
+  `-pa`, `--protein_alphabet`  amino acid mutation probabilities `[uniform, uniprot, codonrates]`, uniform by default \
+  `-ra`, `--rna_alphabet` nucleotide mutation probabilities \
+  `-da`, `--dna_alphabet` nucleotide mutation probabilities 
+
+
 
 **ligand setup** \
 `--ligand` ligand(s) provided in ccd or smiles format separated with commas e.g., "--ligand ATP,MG" \
 
 
 **outputs control** \
-`-o`,`--outpath` output dir name where log and checkpoint files are saved, "ames_output/output" by default` \
-`-l`, `--log` output log file name, "progress.log" by default` \
-`-c`, `--ckp` checkpoint file name, "progress.ckp" by default` \    
+`-o`,`--outpath` output dir name where log and checkpoint files are saved, "ames_output/output" by default \
+`-l`, `--log` output log file name, "progress.log" by default \
+`-c`, `--ckp` checkpoint file name, "progress.ckp" by default \
 `-ckpi`, `--checkpoint_interval` checkpoint saving frequency generations \
-`--nobackup`, action=`store_true` overwrite output if exists` \
+`--nobackup`, action=`store_true` overwrite output if exists 
 
 **constraints** \
-`--seq1_len_constr` constain seq1 length \
-`--seq2_len_constr` constain seq2 length \
+`--seq1_min_len` seq1 minimal length constraint\
+`--seq1_max_len` seq1 maximal length constraint\
+`--seq2_min_len` seq2 minimal length constraint\
+`--seq2_max_len` seq2 maximal length constraint
 
 **other** \
 `--engine` structure prediction engine [alphafold3, openfold3, esmfold, simulacrum]" \
