@@ -24,15 +24,10 @@ parser.add_argument('-l', '--log', type=str, help='log file name', default='prog
 parser.add_argument('-o', '--outdir', type=str, help='output directory name')
 parser.add_argument('-b', '--start', type=int, help='first point to read from trajectory', default=0)
 parser.add_argument('-e', '--end', type=int, help='last point to read from trajectory', default=99999999)
-parser.add_argument('--seqstat', action='store_true', )
 
-parser.add_argument('--summary', action='store_true', )
-parser.add_argument('--plots', action='store_true', )
-parser.add_argument('--traj', action='store_true', )
-
+parser.add_argument('--reseqstat', action='store_false', )
 parser.add_argument('--noplots', action='store_false', )
-parser.add_argument('--notraj', action='store_false', )
-parser.add_argument('--nopdb', action='store_false', )
+parser.add_argument('--nostr', action='store_false', )
 
 
 args = parser.parse_args()
@@ -211,17 +206,18 @@ def make_summary_plot(log, bestlog, lineage, simparam):
     summ_plot(axs[0,0], 'ptm')
     summ_plot(axs[1,0], 'plddt')
     summ_plot(axs[2,0], 'score', last_row = True)
+    summ_plot(axs[2,1], 'seq1_len', last_row = True)
     axs[2,0].legend(loc ="lower right", markerscale=markerscale)
 
     if simparam["seq2"]:
         summ_plot(axs[0,1], 'iptm')
         summ_plot(axs[1,1], 'iplddt')
+        summ_plot(axs[2,1], 'seq2_len', last_row = True)
 
     else:
         summ_plot(axs[0,1], 'cd')
         summ_plot(axs[1,1], 'lcd')
-    
-    summ_plot(axs[2,1], 'seq1_len', last_row = True)
+
 
     fig.tight_layout()
     fig.savefig(os.path.join(outdir,'Summary.png'), dpi=dpi)
@@ -313,24 +309,23 @@ tmp_png = os.path.join(outdir, 'tmp/png/')
 simparam = read_header(args.log)
 print(''.join([f"#--{param:<24} = {value}\n" for param, value in simparam.items()]))
 
-if not args.nopdb:
+if not args.nostr:
     print("#============= dropping structures =============#", end="\r")
-    with open("tmp_progress_nopdb.log", "w") as f:
+    with open("/tmp/tmp_progress_nopdb.log", "w") as f:
         for line in open(args.log):
             if line.startswith("#--"):
                 f.write(line)
             else:
                 break
   
-    os.system(f"grep -v '^#' {args.log} | cut -f1-13 >> tmp_progress_nopdb.log")
+    os.system(f"grep -v '^#' {args.log} | cut -f1-17 >> /tmp/tmp_progress_nopdb.log")
 
-    args.log = "tmp_progress_nopdb.log"
+    args.log = "/tmp/tmp_progress_nopdb.log"
 
 print('#============= reading trajectory ==============#', end="\r")
 log = pd.read_csv(args.log, sep='\t', comment='#', on_bad_lines='skip')
 log = log.iloc[args.start:args.end]
 
-print('#=========== recalculating statistics ===========#', end="\r")
 log["sequence_data"] = log.sequence_data.apply(ast.literal_eval)
 
 log["seq1"] = log["sequence_data"].apply(lambda x: x["seq1"]["sequence"])
@@ -344,21 +339,23 @@ if simparam["seq2"]:
     log["seq2_len"] = log["sequence_data"].apply(lambda x: x["seq2"]["len"])
     log["seq2_stat"] = log["sequence_data"].apply(lambda x: x["seq2"].get("seqstat", 0))
 
-print(f'#========= trajectory with {len(log)} records            ')
 
-
-
+if args.reseqstat:
+    print('#=========== recalculating statistics ===========#', end="\r")
+    log["seq1_stat"] = log["sequence_data"].apply(lambda x: seqstat[x["seq1_type"]](x["seq1"]))
+    if simparam["seq2"]:
+        log["seq2_stat"] = log["sequence_data"].apply(lambda x: seqstat[x["seq2_type"]](x["seq2"]))
 
 bestlog = log.groupby('gndx').head(1)
-bestlog.drop(columns=["sequence_data", "structure"]).to_csv(os.path.join(outdir, 'bestlog.tsv'), sep='\t', index=False, header=True)
+bestlog.drop(columns=["sequence_data"]).to_csv(os.path.join(outdir, 'bestlog.tsv'), sep='\t', index=False, header=True)
 
 
 print('#================================================#')
 lineage = extract_lineage(log)
-lineage.drop(columns=["sequence_data", "structure"]).to_csv(os.path.join(outdir, 'lineage.tsv'), sep='\t', index=False, header=True)
+lineage.drop(columns=["sequence_data"]).to_csv(os.path.join(outdir, 'lineage.tsv'), sep='\t', index=False, header=True)
 
 
-if args.nopdb:
+if args.nostr:
     print("#============ extracting structures ==+=========#", end="\r")
     extract_structures(lineage, outdir)
 
@@ -372,22 +369,9 @@ if args.noplots:
     make_plots(log, bestlog, lineage)
 
 
-if not args.nopdb:
-    os.remove("tmp_progress_nopdb.log")
+if not args.nostr:
+    os.remove("/tmp/tmp_progress_nopdb.log")
 
-
-# a future update
-# if args.summary:
-#     print('#=== making summary plot')
-#     make_summary_plot(log, bestlog, lineage, simparam)
-
-# if args.plots:
-#     print('#=== making plots')
-#     make_plots(log, bestlog, lineage)
-
-# if args.traj:
-#     print("#=== extracting structures")
-#     extract_structures(lineage, outdir)
 
 print('#==================== done ======================#')
 print('#================================================#\n')
