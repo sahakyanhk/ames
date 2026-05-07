@@ -12,7 +12,7 @@ pip install . # install pdb_contacts
 Install [AlphaFold3](https://github.com/google-deepmind/alphafold3/blob/main/docs/installation.md), [OpenFold3](https://github.com/aqlaboratory/openfold-3?tab=readme-ov-file#quick-start-for-inference), or ESMFold via [Transformers](https://github.com/huggingface/transformers?tab=readme-ov-file#installation) 
 
 ## Quick Start
-**Evolution of a protein interacting with tRNA AlphaFold3**
+**Evolution of a protein interacting with RNA using AlphaFold3**
 ```
 python src/ames.py --iseq1 'protein:randoms:65:evolv' --seq1_rate 0.5 \
                     --iseq2 'rna:randoms:24:evolv' --seq2_rate 1 \
@@ -34,7 +34,7 @@ Use [AMESViewer](https://github.com/sahakyanhk/ames_viewer) to visualize and ana
 
 
 #
-**Single protein fold evolution with ESMFold**
+**Single protein fold evolution simulation ([PFES](https://www.pnas.org/doi/10.1073/pnas.2509015122)) with ESMFold** 
 ```
 python src/ames.py --iseq1 'protein:randoms:65:evolv' --seq1_rate 1 \
                     -pm pmo -ps 100 -ng 1000 \

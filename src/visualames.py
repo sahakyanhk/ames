@@ -25,7 +25,7 @@ parser.add_argument('-o', '--outdir', type=str, help='output directory name')
 parser.add_argument('-b', '--start', type=int, help='first point to read from trajectory', default=0)
 parser.add_argument('-e', '--end', type=int, help='last point to read from trajectory', default=99999999)
 
-parser.add_argument('--reseqstat', action='store_false', )
+parser.add_argument('--reseqstat', action='store_true', )
 parser.add_argument('--noplots', action='store_false', )
 parser.add_argument('--nostr', action='store_false', )
 
@@ -342,9 +342,9 @@ if simparam["seq2"]:
 
 if args.reseqstat:
     print('#=========== recalculating statistics ===========#', end="\r")
-    log["seq1_stat"] = log["sequence_data"].apply(lambda x: seqstat[x["seq1_type"]](x["seq1"]))
+    log["seq1_stat"] = log["sequence_data"].apply(lambda x: seqstat[x["seq1"]["type"]](x["seq1"]))
     if simparam["seq2"]:
-        log["seq2_stat"] = log["sequence_data"].apply(lambda x: seqstat[x["seq2_type"]](x["seq2"]))
+        log["seq2_stat"] = log["sequence_data"].apply(lambda x: seqstat[x["seq2"]["type"]](x["seq2"]))
 
 bestlog = log.groupby('gndx').head(1)
 bestlog.drop(columns=["sequence_data"]).to_csv(os.path.join(outdir, 'bestlog.tsv'), sep='\t', index=False, header=True)
