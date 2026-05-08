@@ -259,7 +259,8 @@ def extract_results(gen_i: int,
         if args.engine == "simulacrum" or pdb_txt == "STRUCTURESIMULACRUM":
             score = (15-seq_data["seq1"]["seqstat"]) / 15
 
-            score = seq1_len_penalty * seq2_len_penalty
+            score = score * seq1_len_penalty * seq2_len_penalty
+            
             row_data = {
                         'gndx': gen_i,
                         'id': uid, 
