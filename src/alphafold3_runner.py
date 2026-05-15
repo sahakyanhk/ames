@@ -1,8 +1,3 @@
-"""
-AlphaFold 3 - Modular Functions Based on run_alphafold.py
-
-"""
-
 import sys
 from pathlib import Path
 import numpy as np
@@ -19,15 +14,12 @@ lg = RDLogger.logger()
 lg.setLevel(RDLogger.CRITICAL)
 
 
-# Setup paths
-ALPHAFOLD3_SRC = Path("/data/saakyanh2/WD/af3/alphafold3/src").resolve()
-ALPHAFOLD3_ROOT = Path("/data/saakyanh2/WD/af3/alphafold3").resolve()
+# export these af3 paths in your env
+# export ALPHAFOLD3_ROOT="/path/to/af3/alphafold3"
+# export ALPHAFOLD3_MODEL="/path/to/af3_model"
+# export PYTHONPATH="$ALPHAFOLD3_ROOT:$ALPHAFOLD3_ROOT/src:$PYTHONPATH"
 
-# Add both to path
-if str(ALPHAFOLD3_SRC) not in sys.path:
-    sys.path.insert(0, str(ALPHAFOLD3_SRC))
-if str(ALPHAFOLD3_ROOT) not in sys.path:
-    sys.path.insert(0, str(ALPHAFOLD3_ROOT))
+ALPHAFOLD3_MODEL = os.environ["ALPHAFOLD3_MODEL"]
 
 import jax # type: ignore
 import run_alphafold # type: ignore
@@ -374,7 +366,7 @@ def run_inference(
 
 
 
-model_runner = create_model_runner(model_dir="/data/saakyanh2/af3_model",
+model_runner = create_model_runner(model_dir=ALPHAFOLD3_MODEL,
                                        num_diffusion_samples=3) #NUMBER_OF_DIFFUSIONS
 
 
@@ -385,7 +377,7 @@ def af3_runner(input_fold_list: list[dict] | list[list[dict]]) -> tuple[list[str
     results = {}
     i = 0 
 
-    input_fold_list = ames_to_af3(input_fold_list)  # type: ignore
+    input_fold_list = ames_to_af3(input_fold_list) 
 
 
     for input_dict in input_fold_list:
@@ -397,7 +389,7 @@ def af3_runner(input_fold_list: list[dict] | list[list[dict]]) -> tuple[list[str
             with redirect_stdout(f):
 
                 fold_input = create_fold_input(
-                                seq_list=input_dict, #type: ignore
+                                seq_list=input_dict, 
                                 name=ndx)     
 
                 results[ndx] = run_inference(fold_input, model_runner)
