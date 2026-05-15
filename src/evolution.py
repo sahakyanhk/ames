@@ -158,12 +158,14 @@ class Evolver:
                 raise ValueError(f"unknown sequence_type: {sequence_type!r}; expected 'protein', 'rna' or 'dna'")
 
 
-            if seq_len < 6:
+            min_seq_len = 2
+            if seq_len < min_seq_len:
                 mutation = 'd'
+                mutation_position = 0
             else:
                 mutation_position = random.choice(range(seq_len))
                 mutation =  random.choices(mutation_types, weights=p)[0]
-            
+
             if mutation in alphabet:
                 sequence_mutated = sequence[:mutation_position] + mutation + sequence[mutation_position + 1:]
                 mutation_info = f'{sequence[mutation_position]}{mutation_position+1}.{mutation}'
@@ -173,40 +175,49 @@ class Evolver:
                 sequence_mutated = sequence[:mutation_position + 1] + mutation + sequence[mutation_position + 1:]
                 mutation_info = f'{sequence[mutation_position]}{mutation_position+1}+{mutation}'
 
-            elif mutation == '-':
+            elif mutation == '-' and seq_len > min_seq_len:
                 sequence_mutated = sequence[:mutation_position] + sequence[mutation_position + 1:]
                 mutation_info = f'{sequence[mutation_position]}{mutation_position+1}-'
 
-            elif mutation =='*' and seq_len > 5: #partial duplication
-                insertion_len = random.choice(range(2, int(seq_len/2))) #TODO insertion length probabability
+            elif mutation =='*' and seq_len >= min_seq_len: #partial duplication
+                max_chunk = min(seq_len - mutation_position, max(1, int(seq_len/2)))
+                insertion_len = random.choice(range(1, max_chunk + 1)) #TODO insertion length probabability
                 sequence_mutated = sequence[:mutation_position] + sequence[mutation_position:][:insertion_len] + sequence[mutation_position:]
                 mutation_info = f'{sequence[mutation_position]}{mutation_position+1}*{sequence[mutation_position:][:insertion_len]}'
 
             elif mutation =='/': #random insertion
-                mutation = self.randomseq(sequence_type=sequence_type, nres=random.choice(range(2, int(seq_len/2)))) 
+                max_insertion = max(1, int(seq_len/2))
+                mutation = self.randomseq(sequence_type=sequence_type, nres=random.choice(range(1, max_insertion + 1)))
                 sequence_mutated = sequence[:mutation_position + 1] + mutation + sequence[mutation_position + 1:]
                 mutation_info = f'{sequence[mutation_position]}{mutation_position+1}/{mutation}'
 
-            elif mutation =='%' and seq_len > 5: #partial deletion
-                mutation_position = random.choice(range(seq_len-2))
-                deletion_len = random.choice(range(1, seq_len - mutation_position))
+            elif mutation =='%' and seq_len > min_seq_len: #partial deletion, keep at least min_seq_len residues
+                max_deletion = seq_len - min_seq_len
+                deletion_len = random.choice(range(1, max_deletion + 1))
+                mutation_position = random.choice(range(seq_len - deletion_len + 1))
                 sequence_mutated = sequence[:mutation_position] + sequence[mutation_position + deletion_len:]
                 mutation_info = f'{sequence[mutation_position]}{mutation_position+1}%{deletion_len}'
 
-            elif mutation =='p' and seq_len > 5: #permutation 
+            elif mutation =='p' and seq_len >= min_seq_len: #permutation
                 sequence_mutated =  sequence[mutation_position:] + sequence[:mutation_position]
                 mutation_info = f'{sequence[mutation_position]}{mutation_position+1}p{mutation}'
 
             elif mutation =='d': #full duplication #TODO reduce the duplication probability with sequence growth
                 linker = self.randomseq(sequence_type=sequence_type, nres=2)
-                sequence_mutated = sequence + linker + sequence     
+                sequence_mutated = sequence + linker + sequence
                 mutation_info = f'd{linker}'
-                
-            elif mutation =='r' and seq_len > 5: #TODO recombination 
-                sequence_mutated = sequence
-                mutation_info = f'{mutation_position+1}'
 
-            #TODO random change for a chanck of the sequence. (imitation of a frameshift)
+            # elif mutation =='r' and seq_len > 5: #TODO recombination
+            #     sequence_mutated = sequence
+            #     mutation_info = f'{mutation_position+1}'
+
+            else: #fallback to point mutation when chosen op can't apply (e.g. short sequence)
+                new_residue = self.randomseq(sequence_type=sequence_type, nres=1)
+                sequence_mutated = sequence[:mutation_position] + new_residue + sequence[mutation_position + 1:]
+                mutation_info = f'{sequence[mutation_position]}{mutation_position+1}.{new_residue}'
+
+            #TODO random change for a chunk of the sequence. (imitation of a frameshift)
+
             return sequence_mutated, mutation_info
 
 

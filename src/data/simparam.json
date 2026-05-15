@@ -1,6 +1,5 @@
 {
     "selection_mode": "weak",
-    "include_npm": false,
     "evoldict": null,
     "protein_alphabet": "uniform",
     "rna_alphabet": "uniform",

@@ -1,4 +1,4 @@
-def fold_evolution_simulacrum(input_list: list[dict] | list[list[dict]], args) -> tuple[list[str], list[float], list[float], list[float]]:
+def fold_evolution_simulacrum(input_list: list[dict] | list[list[dict]]) -> tuple[list[str], list[float], list[float], list[float]]:
     
     if isinstance(input_list, dict):
         input_list = [input_list]
