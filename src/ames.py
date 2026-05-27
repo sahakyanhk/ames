@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+
+
 import os
 import sys
 import shutil
@@ -242,13 +245,13 @@ def extract_results(gen_i: int,
 
         # calculate length constraints
         seq1_min_constr = sigmoid(seq_data["seq1"]["len"], args.seq1_min_len, 0.5)
-        seq1_max_constr = 1 - sigmoid(seq_data["seq1"]["len"], args.seq1_max_len, 0.08)
+        seq1_max_constr = 1 - sigmoid(seq_data["seq1"]["len"], args.seq1_max_len, 0.8) #change to 0.08 add as a parameter
 
         seq1_len_penalty = seq1_min_constr * seq1_max_constr
         
         if args.seq2:
             seq2_min_constr = sigmoid(seq_data["seq2"]["len"], args.seq2_min_len, 0.5)
-            seq2_max_constr = 1 - sigmoid(seq_data["seq2"]["len"], args.seq2_max_len, 0.08)
+            seq2_max_constr = 1 - sigmoid(seq_data["seq2"]["len"], args.seq2_max_len, 0.08) 
             seq2_len_penalty = seq2_min_constr * seq2_max_constr
             
         else: 
