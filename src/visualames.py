@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import argparse
 import os, re, sys
 import pandas as pd
@@ -85,7 +87,13 @@ def extract_lineage(log) -> pd.DataFrame:
 """)
     lineage["lndx"] = lineage.reset_index().index
     lineage["evolrate"] = lineage.lndx / lineage.gndx  
-    return lineage
+    return lineage[["gndx", "lndx", "id", "mutation", "beta", "evolrate", 
+                    "plddt", "ptm", "iplddt", "iptm", "cd", "lcd", 
+                    "n_atoms", "n_clashes", "clashscore", "score", 
+                    "seq1", "seq1_ss", "seq1_len", "seq1_stat", 
+                    "seq2", "seq2_ss", "seq2_len", "seq2_stat", 
+                    "structure"]]
+
 
 def extract_sequences(log):
     fasta  = "fasta"
@@ -93,20 +101,7 @@ def extract_sequences(log):
 
 #======================= extract structures and make traj =======================#
 
-def make_backbone_traj(frames: list[str], trajout: str = "backbone_traj.pdb"):
-        
-        if os.path.isfile(trajout):
-            os.remove(trajout)
-    
-        for i, frame in enumerate(frames):
-            
-            backbone_frame = extract_backbone(frame)
-
-            with open(trajout, 'a') as f:
-                f.write(f'MODEL        {i}\n' + backbone_frame + '\nTER\nENDMDL\n')
-
-
-def extract_structures(log, outdir):
+def extract_structures(log, outdir) -> None:
     
     structures_path = os.path.join(outdir, 'structures')
 
@@ -234,7 +229,7 @@ def make_lineage_summary(lineage, simparam):
         
     def lin_summ_plot(axs, colnames, last_row = False):
         for colname in colnames:
-            axs.plot(lineage[colname], '-', linewidth=lw, label=labels[colname])
+            axs.plot(lineage["gndx"], lineage[colname], '-', linewidth=lw, label=labels[colname])
         axs.grid(True, which="both",linestyle='--', linewidth=0.5)
         axs.set(xlabel=None, ylabel=None)
         axs.legend()
@@ -347,12 +342,19 @@ if args.reseqstat:
         log["seq2_stat"] = log["sequence_data"].apply(lambda x: seqstat[x["seq2"]["type"]](x["seq2"]))
 
 bestlog = log.groupby('gndx').head(1)
-bestlog.drop(columns=["sequence_data"]).to_csv(os.path.join(outdir, 'bestlog.tsv'), sep='\t', index=False, header=True)
+bestlog = bestlog[["gndx", "id", "prev_id", "mutation", "beta", 
+                    "plddt", "ptm", "iplddt", "iptm", "cd", "lcd", 
+                    "n_atoms", "n_clashes", "clashscore", "score", 
+                    "seq1", "seq1_ss", "seq1_len", "seq1_stat", 
+                    "seq2", "seq2_ss", "seq2_len", "seq2_stat", 
+                    "structure"]]
+
+bestlog.to_csv(os.path.join(outdir, 'bestlog.tsv'), sep='\t', index=False, header=True)
 
 
 print('#================================================#')
 lineage = extract_lineage(log)
-lineage.drop(columns=["sequence_data"]).to_csv(os.path.join(outdir, 'lineage.tsv'), sep='\t', index=False, header=True)
+lineage.to_csv(os.path.join(outdir, 'lineage.tsv'), sep='\t', index=False, header=True)
 
 
 if args.nostr:
