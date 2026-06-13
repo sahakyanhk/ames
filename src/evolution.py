@@ -43,8 +43,9 @@ class Evolver:
                             'M': 0.4640, 'N': 0.7740, 'P': 1.0300, 'Q': 0.7860, 'R': 1.1620, 
                             'S': 1.4400, 'T': 1.1200, 'V': 1.3500, 'W': 0.2600, 'Y': 0.5700,},
 
-                "npm": {'+': 1.0, '-': 1.0, '*': 0.4, '/':0.4, '%': 0.9, 'p': 0.1, 'd': 0.05}, # non-point mutations
+                "npm": {'+': 1.0, '-': 1.0, '*': 0.4, '/':0.4, '%': 0.9, 'p': 0.1, 'd': 0.05, 'r': 0.05}, # non-point mutations
                 "pmo": {'+': 1.0, '-': 1.0}, #point mutations only
+                "rnd": {'r': 1.0}, #radom sequence every round
                 "rso": None # no mutations, protein length is fixed
               }
 
@@ -86,13 +87,19 @@ class Evolver:
 
         def unpack_evoldict(self, mol_type, alphabet_type, mutations_type):
                 alphabet = list(self.evoldict[mol_type][alphabet_type].keys())
-                if mutations_type and self.evoldict[mol_type][mutations_type]:
+                if  mutations_type in ["npm", "pmo"]:
                     mutations = [*alphabet, *list(self.evoldict[mol_type][mutations_type].keys())]
                     weigths_raw = [*list(self.evoldict[mol_type][alphabet_type].values()),
                                   *list(self.evoldict[mol_type][mutations_type].values())]
-                else:
+                elif mutations_type == "rso":
                     mutations = alphabet
                     weigths_raw = list(self.evoldict[mol_type][alphabet_type].values())
+                elif mutations_type == "rnd":
+                    mutations = [*alphabet, 'r']
+                    weigths_raw = len(alphabet) * [1e-100] + [1e+100] 
+                else:
+                    raise ValueError(f"unknown mutations_type: {mutations_type!r}; expected 'npm', 'pmo', 'rso' or 'rnd'")
+                    
                 weigths_sum = sum(weigths_raw)
                 weigths = [i/weigths_sum for i in weigths_raw] # normalize weights
 
@@ -207,9 +214,9 @@ class Evolver:
                 sequence_mutated = sequence + linker + sequence
                 mutation_info = f'd{linker}'
 
-            # elif mutation =='r' and seq_len > 5: #TODO recombination
-            #     sequence_mutated = sequence
-            #     mutation_info = f'{mutation_position+1}'
+            elif mutation =='r': #all residues are ramdomly changed
+                sequence_mutated = self.randomseq(sequence_type=sequence_type, nres=seq_len)
+                mutation_info = 'r'
 
             else: #fallback to point mutation when chosen op can't apply (e.g. short sequence)
                 new_residue = self.randomseq(sequence_type=sequence_type, nres=1)
@@ -236,10 +243,11 @@ class Evolver:
             weights = np.array(np.exp(beta * mixed_pop.score) / np.array(np.exp(beta * mixed_pop.score)).sum())
             new_init_gen = mixed_pop.sample(n=pop_size, weights=weights, replace=(not norepeat)).sort_values('score', ascending=False)
 
-        elif selection_mode == "weak2":
+        elif selection_mode == "weak_nt": #weak selection without temperature, i.e. weights are proportional to scores
             weights = np.array((mixed_pop.score) / ((mixed_pop.score).sum()))
             new_init_gen = mixed_pop.sample(n=pop_size, weights=weights, replace=(not norepeat)).sort_values('score', ascending=False)
-
+        else:
+            raise ValueError(f"unknown selection_mode: {selection_mode!r}; expected 'strong', 'weak' or 'weak_nt'")
         return new_init_gen
     
 
