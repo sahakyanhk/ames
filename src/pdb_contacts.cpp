@@ -1102,7 +1102,8 @@ py::dict calculateClashScore(const std::string& pdbText,
                              bool excludeHydrogen = true,
                              const std::string& chain = "",
                              double minPlddt = 0.0,
-                             int minSeqDist = 2) {
+                             int minSeqDist = 2,
+                             double bondViolThreshold = 0.5) {
 
     std::vector<Atom> atoms = parseAtoms(pdbText, excludeHydrogen, chain);
 
@@ -1110,6 +1111,7 @@ py::dict calculateClashScore(const std::string& pdbText,
         py::dict result;
         result["clashscore"] = 0.0;
         result["num_clashes"] = 0;
+        result["num_bond_violations"] = 0;
         result["num_atoms"] = 0;
         return result;
     }
@@ -1168,11 +1170,91 @@ py::dict calculateClashScore(const std::string& pdbText,
         }
     }
 
-    double clashscore = static_cast<double>(clashCount) / static_cast<double>(n);
+    // ----- Covalent backbone bond-length violations -----
+    // Detect broken bonds (|distance - ideal| > bondViolThreshold) along the
+    // protein and nucleic-acid backbones. Residues are classified by which
+    // backbone atoms they contain (name-based), so this is robust to
+    // non-standard residue names and atom ordering, handles protein/RNA/DNA
+    // complexes in one pass, and stays O(n_atoms).
+    struct BBAtoms {
+        int N=-1, CA=-1, C=-1, O=-1;                    // protein backbone
+        int P=-1, O5=-1, C5=-1, C4=-1, C3=-1, O3=-1;    // nucleic backbone
+        bool isProtein() const { return N>=0 && CA>=0 && C>=0; }
+        bool isNucleic() const { return C4>=0 && C3>=0; }
+    };
+
+    size_t nRes = ridx.residues.size();
+    std::vector<BBAtoms> bb(nRes);
+
+    for (size_t k = 0; k < n; ++k) {
+        std::string name = atoms[k].atomName;
+        for (char& c : name) if (c == '*') c = '\'';    // normalize C5* -> C5'
+
+        BBAtoms& ba = bb[ridx.atomToResidue[k]];
+        int idx = static_cast<int>(k);
+        if      (name == "N")   ba.N  = idx;
+        else if (name == "CA")  ba.CA = idx;
+        else if (name == "C")   ba.C  = idx;
+        else if (name == "O")   ba.O  = idx;
+        else if (name == "P")   ba.P  = idx;
+        else if (name == "O5'") ba.O5 = idx;
+        else if (name == "C5'") ba.C5 = idx;
+        else if (name == "C4'") ba.C4 = idx;
+        else if (name == "C3'") ba.C3 = idx;
+        else if (name == "O3'") ba.O3 = idx;
+    }
+
+    int bondViolations = 0;
+
+    auto checkBond = [&](int ia, int ib, double ideal) {
+        if (ia < 0 || ib < 0) return;                   // atom missing: can't judge
+        if (atoms[ia].bfactor < minPlddt || atoms[ib].bfactor < minPlddt) return;
+        double d = calculateDistance(atoms[ia], atoms[ib]);
+        if (std::fabs(d - ideal) > bondViolThreshold) bondViolations++;
+    };
+
+    // Intra-residue backbone bonds
+    for (size_t r = 0; r < nRes; ++r) {
+        if (bb[r].isProtein()) {
+            checkBond(bb[r].N,  bb[r].CA, 1.459);
+            checkBond(bb[r].CA, bb[r].C,  1.525);
+            checkBond(bb[r].C,  bb[r].O,  1.231);
+        } else if (bb[r].isNucleic()) {
+            checkBond(bb[r].P,  bb[r].O5, 1.593);
+            checkBond(bb[r].O5, bb[r].C5, 1.440);
+            checkBond(bb[r].C5, bb[r].C4, 1.510);
+            checkBond(bb[r].C4, bb[r].C3, 1.524);
+            checkBond(bb[r].C3, bb[r].O3, 1.423);
+        }
+    }
+
+    // Inter-residue linkage bonds, only between consecutive same-chain residues
+    // of the same polymer type whose numbers differ by exactly 1 (avoids false
+    // positives on sequence gaps and protein/nucleic chain junctions).
+    for (size_t r = 0; r + 1 < nRes; ++r) {
+        const ResidueId& a = ridx.residues[r];
+        const ResidueId& b = ridx.residues[r + 1];
+        if (a.chain != b.chain || b.number != a.number + 1) continue;
+        if (bb[r].isProtein() && bb[r + 1].isProtein()) {
+            checkBond(bb[r].C, bb[r + 1].N, 1.336);     // peptide bond
+        } else if (bb[r].isNucleic() && bb[r + 1].isNucleic()) {
+            checkBond(bb[r].O3, bb[r + 1].P, 1.607);    // phosphodiester linkage
+        }
+    }
+
+    // Each broken backbone bond is weighted by (n_atoms * 0.1) so that, after the
+    // /n_atoms normalization, it contributes a flat 0.1 to the clashscore regardless
+    // of structure size (one break is one break, not size-diluted). A break is far
+    // more severe than a steric clash, so it dominates the score; ~10 breaks saturate
+    // it. Equivalent to: clashscore = clashCount / n_atoms + 0.1 * bondViolations.
+    double clashscore = (static_cast<double>(clashCount)
+                         + (static_cast<double>(n) * 0.1) * bondViolations)
+                        / static_cast<double>(n);
 
     py::dict result;
     result["clashscore"] = clashscore;
     result["num_clashes"] = clashCount;
+    result["num_bond_violations"] = bondViolations;
     result["num_atoms"] = static_cast<int>(n);
 
     return result;
@@ -1571,25 +1653,36 @@ PYBIND11_MODULE(pdb_contacts, m) {
           py::arg("chain") = "",
           py::arg("min_plddt") = 0.0,
           py::arg("min_seq_dist") = 2,
-          "Calculate clashscore (num_clashes / num_atoms, ChimeraX-style).\n\n"
+          py::arg("bond_length_violation_threshold") = 0.5,
+          "Calculate clashscore = num_clashes / num_atoms + 0.1 * num_bond_violations.\n\n"
           "A steric clash occurs when two non-bonded atoms overlap by more than\n"
           "the threshold. Overlap = (VDW_A + VDW_B) - distance - hbond_allowance.\n"
           "The hbond_allowance is only subtracted for H-bond donor/acceptor pairs (N,O,S).\n"
           "Same-residue pairs are always excluded. Adjacent-residue backbone noise is\n"
           "filtered by min_seq_dist (default: 2 skips seq_dist < 2 on the same chain).\n"
           "pLDDT filtering is atom-level: both atoms must have bfactor >= min_plddt.\n\n"
+          "Covalent bond-length violations (broken bonds) are also counted along the\n"
+          "protein and nucleic-acid backbones: a bond is a violation when its length\n"
+          "deviates from the ideal by more than bond_length_violation_threshold.\n"
+          "Residues are classified by backbone-atom presence (name-based), so the check\n"
+          "handles protein/RNA/DNA and mixed complexes without residue templates and\n"
+          "stays O(n_atoms). Each violation adds a flat 0.1 to the clashscore (size-\n"
+          "independent), so a single broken bond dominates clash noise and ~10 saturate it.\n\n"
           "Parameters:\n"
           "  pdb_text: PDB format text\n"
           "  overlap_threshold: Minimum VDW overlap in Angstroms (default: 0.6, ChimeraX default)\n"
           "  hbond_allowance: Overlap allowance for H-bond pairs in Angstroms (default: 0.4)\n"
           "  exclude_hydrogen: Skip hydrogen atoms (default: True)\n"
           "  chain: Chain filter - comma-separated chain IDs, e.g. 'A,B' (default: all)\n"
-          "  min_plddt: Minimum pLDDT for both atoms in a clash (default: 0.0)\n"
-          "  min_seq_dist: Minimum sequence separation for same-chain pairs (default: 2)\n\n"
+          "  min_plddt: Minimum pLDDT for both atoms in a clash or bond (default: 0.0)\n"
+          "  min_seq_dist: Minimum sequence separation for same-chain pairs (default: 2)\n"
+          "  bond_length_violation_threshold: Max |length - ideal| before a backbone\n"
+          "    bond counts as broken, in Angstroms (default: 0.5)\n\n"
           "Returns:\n"
           "  Dictionary with keys:\n"
-          "    - clashscore: num_clashes / num_atoms\n"
+          "    - clashscore: (num_clashes + num_bond_violations) / num_atoms\n"
           "    - num_clashes: Total number of clashing atom pairs\n"
+          "    - num_bond_violations: Total number of broken backbone bonds\n"
           "    - num_atoms: Number of atoms evaluated");
 
     m.def("interface_quality", &calculateInterfaceQuality,
