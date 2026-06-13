@@ -22,7 +22,7 @@ from evolution import Evolver
 from seqtools import Seqstat
 import pdb_contacts as pc
 from psique import pypsique
-
+from rnatools import rna_secondary_structure as rna_ss
 
 from amestools import (parse_args,
                        generate_loghead,
@@ -160,7 +160,7 @@ def fold_evolution_simulator() -> None:
         #predict data for the new batch        
         for headers, sequence_data_batch in batched_sequence_data:
             
-            if args.engine in ["af3", "of3", "esmfold"]:
+            if args.engine in ["af3", "of3", "esmfold2"]:
                 structure_predictor_ouptut = structure_predictor(sequence_data_batch)  # type: ignore
 
             elif args.engine == "simulacrum":
@@ -295,25 +295,34 @@ def extract_results(gen_i: int,
 
 
         if args.seq1_type == 'protein':
-            protein_ss, _, _ = pypsique(pdb_txt, chain=args.protein_chain)
+            protein_ss, maxhelix, maxbeta = pypsique(pdb_txt, chain=args.protein_chain)
             seq_data["seq1"]["ss"] = protein_ss
+            seq1_maxalpha_penalty = 1 - sigmoid(maxhelix, args.helix_len_penalty, 0.5)
+            seq1_maxbeta_penalty = 1 - sigmoid(maxbeta, args.strand_len_penalty, 0.6)
         else:
-            nucleic_ss = "NASECONDARYSTRUCTURES"
+            nucleic_seq, nucleic_ss = rna_ss(pdb_txt, chain=args.nucleic_chain)
             seq_data["seq1"]["ss"] = nucleic_ss
-    
+            seq1_maxalpha_penalty = 1
+            seq1_maxbeta_penalty = 1
         if args.seq2:
 
             iplddt = round(pc.interface_plddt(pdb_txt, chain1 = "A", chain2 = "B", cutoff = args.interface_plddt_cutoff) * 0.01, 3)
 
             if args.seq2_type == 'protein':
-                protein_ss, _, _ = pypsique(pdb_txt, chain=args.protein_chain)
+                protein_ss, maxhelix, maxbeta = pypsique(pdb_txt, chain=args.protein_chain)
                 seq_data["seq2"]["ss"] = protein_ss
+                seq2_maxalpha_penalty = 1 - sigmoid(maxhelix, args.helix_len_penalty, 0.5)
+                seq2_maxbeta_penalty = 1 - sigmoid(maxbeta, args.strand_len_penalty, 0.6)
             else:
-                nucleic_ss = "NASECONDARYSTRUCTURES"
+                nucleic_seq, nucleic_ss = rna_ss(pdb_txt, chain=args.nucleic_chain)
                 seq_data["seq2"]["ss"] = nucleic_ss
+                seq2_maxalpha_penalty = 1
+                seq2_maxbeta_penalty = 1
 
         else:
             iplddt = 0.0
+            seq2_maxalpha_penalty = 1
+            seq2_maxbeta_penalty = 1
 
 
         if args.protein_chain == "A" or args.protein_chain == "B":
@@ -339,6 +348,7 @@ def extract_results(gen_i: int,
 
         clashscore_row = pc.clashscore(pdb_txt, 
                                         overlap_threshold=args.clash_overlap_threshold, 
+                                        bond_length_violation_threshold=1.2, # only strong violations (broken chains) are counted 
                                         exclude_hydrogen=True, 
                                         chain="", 
                                         min_seq_dist=args.clash_min_seq_dist)
@@ -372,7 +382,9 @@ def extract_results(gen_i: int,
         iplddt = round(iplddt, 3)
         clashscore = round(clashscore, 3)
 
-        penalty = seq1_len_penalty * seq2_len_penalty  * clash_penalty#* max_alpha_penalty * max_beta_penalty
+        penalty = seq1_len_penalty * seq2_len_penalty  * clash_penalty \
+                    * seq1_maxalpha_penalty * seq1_maxbeta_penalty \
+                    * seq2_maxalpha_penalty * seq2_maxbeta_penalty
         
         #=============================== SCORING ===============================#
 
@@ -458,8 +470,8 @@ if args.engine == "af3":
 elif args.engine == "of3":
     from openfold3seq_runner import of3_runner as structure_predictor
 
-elif args.engine == "esmfold":
-    from esmfold_runner import esmfold_runner as structure_predictor
+elif args.engine == "esmfold2":
+    from esmfold2_runner import esmfold2_runner as structure_predictor
 
 elif args.engine == "simulacrum":
     from simulacra import fold_evolution_simulacrum
