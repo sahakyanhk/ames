@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+#set -e
 
 runs="${1:?Usage: $0 <runs_dir> [run_va]}"
 
@@ -16,9 +16,9 @@ if [ -d "summary" ]; then
 fi
 
 
-if [ "$2" == "run_va" ]; then
+if [[ "$2" == "run_va" || "$3" == "run_va" ]]; then
     for dir in `ls -d run*/`; do 
-        python $REPO_ROOT/src/visualames.py -l  $dir/progress.log  ; 
+        visualames.py -l  $dir/progress.log  ; 
     done
 fi
 
@@ -67,44 +67,59 @@ done
 echo -e "run\t$(head -n 1 "${run}/lineage.tsv")" > "$summarytsv"
 cat "${summarytsv}.tmp" >> "$summarytsv" && rm "${summarytsv}.tmp"
 
-echo "clustering complexes with RNPclast"
-extract_interface.py -i "$summary_pdb" -o "i${summary_pdb}15" -c A -cut 15
-rnpclust -i "i${summary_pdb}15" -o summary/rnpclust15 -c 0.4
 
 echo "generating summary plots..."
 
 python - <<EOF
 import os
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
 def summary_plot_with_violin(basedir, param='seq1_stat'):
-    series_list = []
+    param_list = []      # param value indexed by generation (gndx), per run
+    lineage_lengths = [] # number of ancestors in the lineage chain, per run
     final_values = []
 
-    for lineage in os.listdir(basedir):
+    for lineage in sorted(os.listdir(basedir)):
         if lineage.endswith("_lineage.tsv"):
             df = pd.read_csv(f"{basedir}/{lineage}", sep='\t')
             if param not in df.columns:
                 return
-            series_list.append(df[param])
+            df = df.drop_duplicates(subset='gndx', keep='last')
+            param_list.append(pd.Series(df[param].values, index=df['gndx'].values))
+            lineage_lengths.append(df.shape[0])
             final_values.append(df[param].iloc[-1])
 
-    combined = pd.concat(series_list, axis=1)
+    # Each run advances through generations sparsely (a lineage skips generations
+    # where it produced no surviving ancestor). Reindex every run onto a common
+    # generation grid and forward-fill, since a lineage value persists until the
+    # next ancestor appears. Positions past a run's last generation stay NaN so
+    # short runs do not bias the aggregate at high generations.
+    max_gen = max(int(s.index.max()) for s in param_list)
+    grid = np.arange(0, max_gen + 1)
+
+    def align(s):
+        g = s.reindex(grid).ffill()
+        g[grid > s.index.max()] = np.nan
+        return g
+
+    combined = pd.concat([align(s) for s in param_list], axis=1)
 
     plt.style.use('bmh')
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5), gridspec_kw={'width_ratios': [3, 1]})
 
-    for col in combined:
-        ax1.plot(combined.index, combined[col], linewidth=0.5, alpha=0.08)
+    for col in combined.columns:
+        ax1.plot(grid, combined[col], linewidth=0.5, alpha=0.5, color='silver')
     n_runs = combined.shape[1]
     mean_series = combined.mean(axis=1, skipna=True)
     median_series = combined.median(axis=1, skipna=True)
-    ax1.plot(median_series.index, median_series.values, color='red', linewidth=2, alpha=0.7, label='median')
-    ax1.plot(mean_series.index, mean_series.values, color='black', linewidth=2, label='mean')
-    ax1.set_xlabel('lineage length')
+    ax1.plot(grid, median_series.values, color='red', linewidth=2, alpha=0.7, label='median')
+    ax1.plot(grid, mean_series.values, color='black', linewidth=2, label='mean')
+    ax1.set_xlabel('Generation')
     ax1.set_ylabel(param)
-    ax1.legend(title=f'n={n_runs}', loc='lower right')
+    avg_lineage_length = np.mean(lineage_lengths)
+    ax1.legend(title=f'n={n_runs}\navg lineage length={avg_lineage_length:.0f}', loc='lower right')
 
     parts = ax2.violinplot(final_values, positions=[0], showmeans=True, showmedians=True)
     parts['cmedians'].set_color('black')
@@ -130,4 +145,9 @@ for param in ['plddt', 'ptm', 'iplddt', 'iptm', 'score', 'evolrate',
 print("done", end='\x1b[1K\r')
 
 EOF
+
+if [[ "$2" == "rnpclust" || "$3" == "rnpclust" ]]; then
+    echo "clustering complexes with RNPclust"
+    rnpclust -i "summary/pdb" -o "summary/rnpclust" -c 0.5
+fi
 
