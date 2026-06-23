@@ -487,6 +487,7 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
                                      "lcd",
                                      "n_clashes",
                                      "clashscore",
+                                     "penalty",
                                      "score", 
                                      "sequence_data", 
                                      "mutation", 
@@ -589,11 +590,12 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
     init_gen["ptm"] = 0.0
     init_gen["iplddt"] = 0.0
     init_gen["iptm"] = 0.0
-    init_gen["n_atoms"] = 0.0
     init_gen["cd"] = 0.0
     init_gen["lcd"] = 0.0
-    init_gen["n_clashes"] = 0.0
+    init_gen["n_atoms"] = 0
+    init_gen["n_clashes"] = 0
     init_gen["clashscore"] = 0.0
+    init_gen["penalty"] = 0.0
     init_gen["score"] = 0.001 
     init_gen['sequence_data'] = seq_data        
     init_gen["mutation"] = "init_gen"

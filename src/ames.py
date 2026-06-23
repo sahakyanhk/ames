@@ -22,7 +22,7 @@ from evolution import Evolver
 from seqtools import Seqstat
 import pdb_contacts as pc
 from psique import pypsique
-from rnatools import rna_secondary_structure as rna_ss
+from rnatools import rna_ss_penalty, rna_secondary_structure
 
 from amestools import (parse_args,
                        generate_loghead,
@@ -272,10 +272,10 @@ def extract_results(gen_i: int,
                         'ptm': 0.0, 
                         'iplddt': 0.0,
                         'iptm': 0.0,
-                        "n_atoms": 0.0,
                         'cd': 0.0,
                         'lcd': 0.0,
-                        "n_clashes": 0.0,
+                        "n_atoms": 0,
+                        "n_clashes": 0,
                         "clashscore": 0.0,
                         'score': score,
                         'sequence_data': seq_data, 
@@ -295,34 +295,43 @@ def extract_results(gen_i: int,
 
 
         if args.seq1_type == 'protein':
-            protein_ss, maxhelix, maxbeta = pypsique(pdb_txt, chain=args.protein_chain)
+            protein_ss, maxhelix, maxstrand = pypsique(pdb_txt, chain="A")
             seq_data["seq1"]["ss"] = protein_ss
             seq1_maxalpha_penalty = 1 - sigmoid(maxhelix, args.helix_len_penalty, 0.5)
-            seq1_maxbeta_penalty = 1 - sigmoid(maxbeta, args.strand_len_penalty, 0.6)
+            seq1_maxstrand_penalty = 1 - sigmoid(maxstrand, args.strand_len_penalty, 0.5)
+            rna_loop_penalty = 1
+            rna_step_panalty = 1
         else:
-            nucleic_seq, nucleic_ss = rna_ss(pdb_txt, chain=args.nucleic_chain)
+            nucleic_seq, nucleic_ss, max_stem_len = rna_secondary_structure(pdb_txt, chain="A")
             seq_data["seq1"]["ss"] = nucleic_ss
+            rna_loop_penalty = rna_ss_penalty(nucleic_ss) # !!! NOT INCLUDED IN THE SCORE YET
+            rna_step_panalty = sigmoid(max_stem_len, 999, 0.5)
             seq1_maxalpha_penalty = 1
-            seq1_maxbeta_penalty = 1
+            seq1_maxstrand_penalty = 1
+            
         if args.seq2:
 
             iplddt = round(pc.interface_plddt(pdb_txt, chain1 = "A", chain2 = "B", cutoff = args.interface_plddt_cutoff) * 0.01, 3)
 
             if args.seq2_type == 'protein':
-                protein_ss, maxhelix, maxbeta = pypsique(pdb_txt, chain=args.protein_chain)
+                protein_ss, maxhelix, maxstrand = pypsique(pdb_txt, chain="B")
                 seq_data["seq2"]["ss"] = protein_ss
                 seq2_maxalpha_penalty = 1 - sigmoid(maxhelix, args.helix_len_penalty, 0.5)
-                seq2_maxbeta_penalty = 1 - sigmoid(maxbeta, args.strand_len_penalty, 0.6)
+                seq2_maxstrand_penalty = 1 - sigmoid(maxstrand, args.strand_len_penalty, 0.5)
+                rna_loop_penalty = 1
+                rna_step_panalty = 1
             else:
-                nucleic_seq, nucleic_ss = rna_ss(pdb_txt, chain=args.nucleic_chain)
+                nucleic_seq, nucleic_ss, max_stem_len = rna_secondary_structure(pdb_txt, chain="B")
                 seq_data["seq2"]["ss"] = nucleic_ss
+                rna_loop_penalty = rna_ss_penalty(nucleic_ss)
+                rna_step_panalty = sigmoid(max_stem_len, 999, 0.5)
                 seq2_maxalpha_penalty = 1
-                seq2_maxbeta_penalty = 1
+                seq2_maxstrand_penalty = 1
 
         else:
             iplddt = 0.0
             seq2_maxalpha_penalty = 1
-            seq2_maxbeta_penalty = 1
+            seq2_maxstrand_penalty = 1
 
 
         if args.protein_chain == "A" or args.protein_chain == "B":
@@ -354,7 +363,7 @@ def extract_results(gen_i: int,
                                         min_seq_dist=args.clash_min_seq_dist)
 
         num_clashes = clashscore_row['num_clashes']
-        num_atoms = clashscore_row['num_atoms']
+        num_atoms = int(clashscore_row['num_atoms'])
         clashscore = clashscore_row['clashscore']
         clash_penalty = 1 - np.clip(clashscore_row['clashscore'], 0, 1)
         
@@ -382,9 +391,9 @@ def extract_results(gen_i: int,
         iplddt = round(iplddt, 3)
         clashscore = round(clashscore, 3)
 
-        penalty = seq1_len_penalty * seq2_len_penalty  * clash_penalty \
-                    * seq1_maxalpha_penalty * seq1_maxbeta_penalty \
-                    * seq2_maxalpha_penalty * seq2_maxbeta_penalty
+        penalty = round(seq1_len_penalty * seq2_len_penalty  * clash_penalty \
+                    * seq1_maxalpha_penalty * seq1_maxstrand_penalty \
+                    * seq2_maxalpha_penalty * seq2_maxstrand_penalty, 3)
         
         #=============================== SCORING ===============================#
 
@@ -405,11 +414,12 @@ def extract_results(gen_i: int,
             'ptm': ptm, 
             'iplddt': iplddt,
             'iptm': iptm,
-            "n_atoms": num_atoms,
             'cd': contact_density,
             'lcd': ligand_contact_density,
+            "n_atoms": num_atoms,
             "n_clashes": num_clashes,
             "clashscore": clashscore,
+            "penalty": penalty,
             'score': score,
             'sequence_data': seq_data, 
             'mutation': mutation,
