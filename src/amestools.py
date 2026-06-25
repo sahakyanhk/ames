@@ -481,10 +481,10 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
                                      "plddt", 
                                      "ptm", 
                                      "iplddt",
-                                     "iptm", 
-                                     "n_atoms",
+                                     "iptm",
                                      "cd",
                                      "lcd",
+                                     "n_atoms",
                                      "n_clashes",
                                      "clashscore",
                                      "penalty",
@@ -655,7 +655,7 @@ def extract_sequence(seq_data: dict) -> str:
     if 'seq2' in seq_data:
         seq2 = seq_data['seq2']['sequence']
         ss2 = seq_data['seq2']['ss']
-        print_srting += f" & {seq2}|{ss2}"
+        print_srting += f" {seq2}|{ss2}"
 
     return print_srting
 
