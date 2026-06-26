@@ -29,6 +29,7 @@ from amestools import (parse_args,
                        save_checkpoint,
                        sequence_signature,
                        build_sequence_lookup,
+                       calculate_homogeneity,
                        update_beta,
                        compress_str, 
                        sigmoid,
@@ -160,7 +161,7 @@ def fold_evolution_simulator() -> None:
         #predict data for the new batch        
         for headers, sequence_data_batch in batched_sequence_data:
             
-            if args.engine in ["af3", "of3", "esmfold2"]:
+            if args.engine in ["af3", "of3", "esmfold", "esmfold2"]:
                 structure_predictor_ouptut = structure_predictor(sequence_data_batch)  # type: ignore
 
             elif args.engine == "simulacrum":
@@ -178,8 +179,12 @@ def fold_evolution_simulator() -> None:
         for t in threads:
                 t.join()
         
+        # calculate the homogeneity of the generation, 
+        # whole generation is needed to calculate the homogeneity, therefore it is not calculated in extract_results()
+        new_gen['homogen'] = calculate_homogeneity(new_gen)
+
         seconds_per_generation = (datetime.now() - now).total_seconds()
-        if gen_i % 1 == 0:
+        if gen_i % 10 == 0:
             print(f"""
 #{seconds_per_generation:.1f}s per generation
 #{86400 / seconds_per_generation:.0f} generations per day
@@ -260,7 +265,7 @@ def extract_results(gen_i: int,
 
         # imitate simulation without real structure prediction
         if args.engine == "simulacrum" or pdb_txt == "STRUCTURESIMULACRUM":
-            score = (15-seq_data["seq1"]["seqstat"]) / 15
+            score = ((15-seq_data["seq1"]["seqstat"]) / 15) + (random.random() - 0.5) # add some noise to the score
 
             score = score * seq1_len_penalty * seq2_len_penalty
             
@@ -268,15 +273,17 @@ def extract_results(gen_i: int,
                         'gndx': gen_i,
                         'id': uid, 
                         'beta': args.beta,
+                        'homogen': 0.0,
                         'plddt': 0.0,
                         'ptm': 0.0, 
                         'iplddt': 0.0,
                         'iptm': 0.0,
                         'cd': 0.0,
                         'lcd': 0.0,
-                        "n_atoms": 0,
-                        "n_clashes": 0,
-                        "clashscore": 0.0,
+                        'n_atoms': 0,
+                        'n_clashes': 0,
+                        'clashscore': 0.0,
+                        'penalty': 0.0,
                         'score': score,
                         'sequence_data': seq_data, 
                         'mutation': mutation,
@@ -410,6 +417,7 @@ def extract_results(gen_i: int,
             'gndx': gen_i,
             'id': uid, 
             'beta': args.beta,
+            'homogen': 0, # will be updated later, whole generation is needed
             'plddt': plddt,
             'ptm': ptm, 
             'iplddt': iplddt,

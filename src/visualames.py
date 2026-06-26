@@ -86,13 +86,17 @@ def extract_lineage(log) -> pd.DataFrame:
 {json.dumps(ltail.sequence_data.iloc[-1], indent=4)}
 """)
     lineage["lndx"] = lineage.reset_index().index
-    lineage["evolrate"] = lineage.lndx / lineage.gndx  
-    return lineage[["gndx", "lndx", "id", "mutation", "beta", "evolrate", 
-                    "plddt", "ptm", "iplddt", "iptm", "cd", "lcd", 
-                    "n_atoms", "n_clashes", "clashscore", "score", 
-                    "seq1", "seq1_ss", "seq1_len", "seq1_stat", 
-                    "seq2", "seq2_ss", "seq2_len", "seq2_stat", 
-                    "structure"]]
+    #lineage["evolrate"] = 1 - lineage["homogen"] future update
+    lineage["evolrate"] = 0
+
+    lineage_cols = ["gndx", "lndx", "id", "mutation", "beta", "evolrate",
+                    "plddt", "ptm", "iplddt", "iptm", "cd", "lcd",
+                    "n_atoms", "n_clashes", "clashscore", "score",
+                    "seq1", "seq1_ss", "seq1_len", "seq1_stat"]
+    if simparam["seq2"]:
+        lineage_cols += ["seq2", "seq2_ss", "seq2_len", "seq2_stat"]
+    lineage_cols += ["structure"]
+    return lineage[lineage_cols]
 
 
 def extract_sequences(log):
@@ -137,7 +141,7 @@ labels = {
     "cd": "Contact Density", 
     "lcd": "Ligand Contact Density",
     "beta": "Selection strength",
-    "penalty": "Pentaly",
+    "penalty": "Penalty",
     "seq1_len": "Seq1 len",
     "seq2_len": "Seq2 len",
     "seq1_stat": "Seq1 ngram loss",
@@ -187,11 +191,20 @@ def make_summary_plot(log, bestlog, lineage, simparam):
     markerscale=25
     
     def summ_plot(axs, colname, last_row = False):
-        axs.plot(log[colname], '.', markersize=ms,    color='silver', label='all mutations')
-        axs.plot(bestlog[colname], '-', linewidth=lw, label='best of the generation')
-        axs.plot(lineage[colname], '-', linewidth=lw, color='mediumslateblue', label=f'lineage (L={len(lineage)})')
-        axs.set(xlabel=None, ylabel=labels[colname])
+        colnames = [colname] if isinstance(colname, str) else colname
+        multi = len(colnames) > 1
+        for cn in colnames:
+            if multi:
+                line, = axs.plot(lineage[cn], '-', linewidth=lw, label=f'lineage {labels[cn]}')
+                axs.plot(log[cn], '.', markersize=ms, color=line.get_color(), alpha=0.25)
+            else:
+                axs.plot(log[cn], '.', markersize=ms,    color='silver', label='all mutations')
+                axs.plot(bestlog[cn], '-', linewidth=lw, label='best of the generation')
+                axs.plot(lineage[cn], '-', linewidth=lw, color='mediumslateblue', label=f'lineage (L={len(lineage)})')
+        axs.set(xlabel=None, ylabel='Sequence length' if multi else labels[colnames[0]])
         axs.grid(True, which="both",linestyle='--', linewidth=0.5)
+        if multi:
+            axs.legend()
         if last_row:
             axs.set(xlabel='Total number of mutations')
         else:
@@ -201,17 +214,17 @@ def make_summary_plot(log, bestlog, lineage, simparam):
     summ_plot(axs[0,0], 'ptm')
     summ_plot(axs[1,0], 'plddt')
     summ_plot(axs[2,0], 'score', last_row = True)
-    summ_plot(axs[2,1], 'seq1_len', last_row = True)
     axs[2,0].legend(loc ="lower right", markerscale=markerscale)
 
     if simparam["seq2"]:
         summ_plot(axs[0,1], 'iptm')
         summ_plot(axs[1,1], 'iplddt')
-        summ_plot(axs[2,1], 'seq2_len', last_row = True)
+        summ_plot(axs[2,1], ['seq1_len', 'seq2_len'], last_row = True)
 
     else:
         summ_plot(axs[0,1], 'cd')
         summ_plot(axs[1,1], 'lcd')
+        summ_plot(axs[2,1], 'seq1_len', last_row = True)
 
 
     fig.tight_layout()
@@ -342,13 +355,14 @@ if args.reseqstat:
         log["seq2_stat"] = log["sequence_data"].apply(lambda x: seqstat[x["seq2"]["type"]](x["seq2"]))
 
 bestlog = log.groupby('gndx').head(1)
-bestlog = bestlog[["gndx", "id", "prev_id", "mutation", "beta", 
+bestlog_cols = ["gndx", "id", "prev_id", "mutation", "beta", 
                     "plddt", "ptm", "iplddt", "iptm", "cd", "lcd", 
                     "n_atoms", "n_clashes", "clashscore", "score", 
-                    "seq1", "seq1_ss", "seq1_len", "seq1_stat", 
-                    "seq2", "seq2_ss", "seq2_len", "seq2_stat", 
-                    "structure"]]
-
+                    "seq1", "seq1_ss", "seq1_len", "seq1_stat"]
+if simparam["seq2"]:
+    bestlog_cols += ["seq2", "seq2_ss", "seq2_len", "seq2_stat"]
+bestlog_cols += ["structure"]
+bestlog = bestlog[bestlog_cols]
 bestlog.to_csv(os.path.join(outdir, 'bestlog.tsv'), sep='\t', index=False, header=True)
 
 
@@ -367,8 +381,8 @@ if args.noplots:
     make_summary_plot(log, bestlog, lineage, simparam)
     make_lineage_summary(lineage, simparam)
 
-    print("#============ preparing other plots =============#", end="\r")
-    make_plots(log, bestlog, lineage)
+#    print("#============ preparing other plots =============#", end="\r")
+#    make_plots(log, bestlog, lineage)
 
 
 if not args.nostr:
@@ -377,4 +391,5 @@ if not args.nostr:
 
 print('#==================== done ======================#')
 print('#================================================#\n')
+
 

@@ -399,6 +399,11 @@ def build_sequence_lookup(gen_df: pd.DataFrame) -> dict[str, dict]:
         sequence_lookup[sequence_signature(row["sequence_data"])] = row
     return sequence_lookup
 
+def calculate_homogeneity(gen_df: pd.DataFrame) -> pd.Series:
+        uniseqs = gen_df['sequence_data'].map(lambda d: d["seq1"]["sequence"] + "|" + d.get("seq2", {}).get("sequence", ""))
+        return 1 - (uniseqs.nunique() / len(gen_df))
+
+
 def backup_output(directory_path, backup_suffix=None, max_backups=None) -> T.Optional[str]:
 
     """Backup a directory if it exists by renaming it with a timestamp"""
@@ -478,6 +483,7 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
     init_gen = pd.DataFrame(columns=["gndx", 
                                      "id", 
                                      "beta", 
+                                     "homogen",
                                      "plddt", 
                                      "ptm", 
                                      "iplddt",
@@ -586,6 +592,7 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
 
     init_gen["gndx"] = 0
     init_gen["beta"] = args.beta
+    init_gen["homogen"] = 0.0
     init_gen["plddt"] = 0.0
     init_gen["ptm"] = 0.0
     init_gen["iplddt"] = 0.0
