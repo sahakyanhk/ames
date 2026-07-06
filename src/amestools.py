@@ -401,7 +401,7 @@ def build_sequence_lookup(gen_df: pd.DataFrame) -> dict[str, dict]:
 
 def calculate_homogeneity(gen_df: pd.DataFrame) -> pd.Series:
         uniseqs = gen_df['sequence_data'].map(lambda d: d["seq1"]["sequence"] + "|" + d.get("seq2", {}).get("sequence", ""))
-        return 1 - (uniseqs.nunique() / len(gen_df))
+        return round(1 - (uniseqs.nunique() / len(gen_df)), 3)
 
 
 def backup_output(directory_path, backup_suffix=None, max_backups=None) -> T.Optional[str]:

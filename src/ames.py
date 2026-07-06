@@ -489,7 +489,7 @@ elif args.engine == "of3":
     from openfold3_runner import of3_runner as structure_predictor
 
 elif args.engine == "esmfold":
-    from esmfold2_runner import esmfold_runner as structure_predictor
+    from esmfold_runner import esmfold_runner as structure_predictor
 
 elif args.engine == "esmfold2":
     from esmfold2_runner import esmfold2_runner as structure_predictor

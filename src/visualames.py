@@ -86,7 +86,7 @@ def extract_lineage(log) -> pd.DataFrame:
 {json.dumps(ltail.sequence_data.iloc[-1], indent=4)}
 """)
     lineage["lndx"] = lineage.reset_index().index
-    #lineage["evolrate"] = 1 - lineage["homogen"] future update
+    #lineage["evolrate"] = 1 - lineage["homogen"] #future update
     lineage["evolrate"] = 0
 
     lineage_cols = ["gndx", "lndx", "id", "mutation", "beta", "evolrate",
