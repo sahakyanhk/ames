@@ -99,6 +99,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--clash_overlap_threshold', type=float, help='cutoff distance for clash calculation in angstroms')
     parser.add_argument('--clash_min_seq_dist', type=int, help='minimum sequence distance for clash calculation')
     #other
+    parser.add_argument('--rfam_scoring', type=str, help="reward RNA function based on RFAM search")
     parser.add_argument('--engine', type=str, help="structure prediction engine [alphafold3, openfold3, esmfold, simulacrum]")
     parser.add_argument('--norepeat', action='store_true', help='do not generate and/or select the same sequences more than once, off by default')
     parser.add_argument('--max_seq_per_batch', type=int, help='max_seq_per_batch, half or population size by default ')
@@ -495,6 +496,8 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
                                      "clashscore",
                                      "penalty",
                                      "score", 
+                                     "rfam_score",
+                                     "rfam_hit",
                                      "sequence_data", 
                                      "mutation", 
                                      "prev_id", 
@@ -604,6 +607,8 @@ def create_init_gen(evolver, args) -> pd.DataFrame:
     init_gen["clashscore"] = 0.0
     init_gen["penalty"] = 0.0
     init_gen["score"] = 0.001 
+    init_gen["rfam_score"] = 0.0
+    init_gen["rfam_hit"] = '-'
     init_gen['sequence_data'] = seq_data        
     init_gen["mutation"] = "init_gen"
     init_gen["prev_id"] = "init_gen"

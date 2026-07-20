@@ -22,7 +22,7 @@ from evolution import Evolver
 from seqtools import Seqstat
 import pdb_contacts as pc
 from psique import pypsique
-from rnatools import rna_ss_penalty, rna_secondary_structure
+from rnatools import rna_ss_penalty, rna_secondary_structure, rna_seq_search
 
 from amestools import (parse_args,
                        generate_loghead,
@@ -225,6 +225,24 @@ def extract_results(gen_i: int,
 
     structures, plddts, ptms, iptms = structure_predictor_ouptut
 
+    #RFAM function reward 
+    if args.rfam_scoring and args.seq1_type == "rna" or args.seq2_type == "rna":
+        if args.rfam_scoring == "seq1":
+            rna_sequences = [seq_data["seq1"]["sequence"] for seq_data in sequence_data_batch]
+            rfam_results = rna_seq_search(headers, rna_sequences, tmp="/tmp/", keep_tmp=False)
+        elif args.rfam_scoring == "seq2":
+            rna_sequences = [seq_data["seq2"]["sequence"] for seq_data in sequence_data_batch]
+            rfam_results = rna_seq_search(headers, rna_sequences, tmp="/tmp/", keep_tmp=False)
+        else:
+            raise ValueError("--rfam_score should be either seq1 or seq2, and\
+                                \none of the evolving chains should be RNA.")    
+        rfam_score_dict = {h:s for h, s in zip(rfam_results["headers"], rfam_results["normalized_evalues"])}
+        rfam_hit_dict = {h:s for h, s in zip(rfam_results["headers"], rfam_results["rfams"])}
+    else:
+        rfam_score_dict = {}
+        rfam_hit_dict = {}
+        
+        
     batch_rows = [] 
 
     for meta_id, seq_data, pdb_txt, ptm, plddt, iptm in \
@@ -285,6 +303,8 @@ def extract_results(gen_i: int,
                         'clashscore': 0.0,
                         'penalty': 0.0,
                         'score': score,
+                        'rfam_score': 0.0,
+                        'rfam_hit': '-',
                         'sequence_data': seq_data, 
                         'mutation': mutation,
                         'prev_id': prev_id,
@@ -402,8 +422,10 @@ def extract_results(gen_i: int,
                     * seq1_maxalpha_penalty * seq1_maxstrand_penalty \
                     * seq2_maxalpha_penalty * seq2_maxstrand_penalty, 3)
         
+        rfam_score = rfam_score_dict.get(meta_id, 0)
+        rfam_hit = rfam_hit_dict.get(meta_id, "-")
+        
         #=============================== SCORING ===============================#
-
         score = scoring.score(ptm, 
                               plddt, 
                               iptm, 
@@ -411,7 +433,7 @@ def extract_results(gen_i: int,
                               contact_density, 
                               ligand_contact_density,
                               penalty
-                              ) 
+                              ) + (0.5 * rfam_score)
 
         row_data = {
             'gndx': gen_i,
@@ -429,6 +451,8 @@ def extract_results(gen_i: int,
             "clashscore": clashscore,
             "penalty": penalty,
             'score': score,
+            "rfam_score": rfam_score, 
+            "rfam_hit": rfam_hit,
             'sequence_data': seq_data, 
             'mutation': mutation,
             'prev_id': prev_id,
