@@ -91,7 +91,7 @@ def extract_lineage(log) -> pd.DataFrame:
 
     lineage_cols = ["gndx", "lndx", "id", "mutation", "beta", "evolrate",
                     "plddt", "ptm", "iplddt", "iptm", "cd", "lcd",
-                    "n_atoms", "n_clashes", "clashscore", "score",
+                    "n_atoms", "n_clashes", "clashscore", "rfam_score", "rfam_hit", "score", 
                     "seq1", "seq1_ss", "seq1_len", "seq1_stat"]
     if simparam["seq2"]:
         lineage_cols += ["seq2", "seq2_ss", "seq2_len", "seq2_stat"]
@@ -148,7 +148,9 @@ labels = {
     "seq2_stat": "Seq2 ngram loss",
     "n_atoms": "Number of atoms",
     "n_clashes": "Number of clashes",
-    "clashscore": "Clashscore"
+    "clashscore": "Clashscore",
+    "rfam_score": "RFAM score",
+    "rfam_hit": "RFAM",
         }
 
 
@@ -162,7 +164,8 @@ def make_plots(log, bestlog, lineage):
     for colname in log.keys(): 
         if colname in ['beta', 'plddt', 'ptm', 'iplddt', 'iptm', 
                        'cd', 'lcd', 'score', 'evolrate', 
-                       'n_atoms', 'n_clashes', 'clashscore',
+                       'n_atoms', 'n_clashes', 'clashscore', 
+                       'rfam_score', "rfam_hit",
                        'seq1_len', 'seq1_stat',
                        'seq2_len', 'seq2_stat']:
                 

@@ -51,7 +51,7 @@ import pdb_contacts as pc
 
 
 FASTA_EXTS = (".fa", ".fas", ".fasta")
-INTERFACE_PLDDT_CUTOFF = 8.0  # matches simparam.json default
+INTERFACE_PLDDT_CUTOFF = 5.0  # matches simparam.json default
 _NUCLEIC_ALPHABET = set("ACGTUN")
 
 # accepted --engine values mapped to the canonical runner key used in ames.py

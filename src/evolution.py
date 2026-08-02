@@ -54,6 +54,7 @@ class Evolver:
     rna = {"uniform": {'A': 1, 'U': 1, 'G': 1, 'C': 1,},
             "npm": {'+': 1.0, '-': 1.0, '*': 0.4, '/':0.4, '%': 0.9, 'p': 0.1, 'd': 0.05},
             "pmo": {'+': 1.0, '-': 1.0},
+            "rnd": {'r': 1.0}, #radom sequence every round
             "rso": None
               }
 
@@ -215,7 +216,8 @@ class Evolver:
                 mutation_info = f'd{linker}'
 
             elif mutation =='r': #all residues are ramdomly changed
-                sequence_mutated = self.randomseq(sequence_type=sequence_type, nres=seq_len)
+                random_seq_len = random.choice(range(3, 6))
+                sequence_mutated = self.randomseq(sequence_type=sequence_type, nres=random_seq_len)
                 mutation_info = 'r'
 
             else: #fallback to point mutation when chosen op can't apply (e.g. short sequence)
@@ -228,8 +230,7 @@ class Evolver:
             return sequence_mutated, mutation_info
 
 
-
-    def select(self, input_new_gen, input_init_gen, pop_size:int, selection_mode:str = 'weak', norepeat:bool = False, beta = 1): 
+    def select(input_new_gen, input_init_gen, pop_size:int, selection_mode:str = 'weak', norepeat:bool = False, beta = 1): 
 
         mixed_pop = pd.concat([input_new_gen, input_init_gen], axis=0, ignore_index=True) 
 

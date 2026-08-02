@@ -5,6 +5,9 @@
 #include <vector>
 #include <cmath>
 #include <sstream>
+#include <fstream>
+#include <iterator>
+#include <sys/stat.h>
 #include <set>
 #include <map>
 #include <unordered_map>
@@ -186,6 +189,41 @@ inline bool chainMatches(char atomChain, const std::string& chainFilter) {
     return false;
 }
 
+// Accept either PDB text or a path to a PDB file.
+//
+// Returns a reference to `input` itself when the argument is text, so the text
+// path costs nothing beyond the discriminator - no copy of the PDB is made.
+// When the argument names a file, its contents are read into `storage` and a
+// reference to that is returned; callers own `storage` for the call's lifetime.
+//
+// The discriminator is deliberately cheap: real PDB content is far longer than
+// PATH_MAX and always contains newlines, so the size test short-circuits before
+// any filesystem call. Only a short, single-line input is ever stat'ed, and if
+// it does not name a readable regular file it is used as text unchanged.
+const std::string& resolvePdbInput(const std::string& input, std::string& storage) {
+    if (input.empty() || input.size() > 4096) return input;
+    if (input.find('\n') != std::string::npos) return input;
+    if (input.find('\r') != std::string::npos) return input;
+    if (input.find('\0') != std::string::npos) return input;
+
+    struct stat st;
+    if (stat(input.c_str(), &st) != 0) return input;      // does not exist -> text
+    if (!S_ISREG(st.st_mode)) return input;               // directory/fifo -> text
+
+    std::ifstream f(input, std::ios::in | std::ios::binary);
+    if (!f) {
+        throw std::runtime_error("Failed to open PDB file: " + input);
+    }
+
+    storage.reserve(static_cast<size_t>(st.st_size));
+    storage.assign(std::istreambuf_iterator<char>(f),
+                   std::istreambuf_iterator<char>());
+    if (f.bad()) {
+        throw std::runtime_error("Failed to read PDB file: " + input);
+    }
+    return storage;
+}
+
 // Parse PDB and extract atoms with optional chain filter
 // chain: comma-separated chain IDs (e.g., "A,B" matches chains A and B)
 std::vector<Atom> parseAtoms(const std::string& pdbText,
@@ -239,9 +277,11 @@ ResidueIndex buildResidueIndex(const std::vector<Atom>& atoms) {
 // ============================================================
 
 // Calculate full distance matrix (returns NumPy array)
-py::array_t<double> calculateDistanceMatrix(const std::string& pdbText,
+py::array_t<double> calculateDistanceMatrix(const std::string& pdbInput,
                                            bool excludeHydrogen = true,
                                            const std::string& chain = "") {
+    std::string pdbStorage;
+    const std::string& pdbText = resolvePdbInput(pdbInput, pdbStorage);
     std::vector<Atom> atoms = parseAtoms(pdbText, excludeHydrogen, chain);
     size_t n = atoms.size();
 
@@ -265,10 +305,12 @@ py::array_t<double> calculateDistanceMatrix(const std::string& pdbText,
 }
 
 // Calculate inter-chain distance matrix (chain1 vs chain2)
-py::array_t<double> calculateInterChainDistanceMatrix(const std::string& pdbText,
+py::array_t<double> calculateInterChainDistanceMatrix(const std::string& pdbInput,
                                                       const std::string& chain1,
                                                       const std::string& chain2,
                                                       bool excludeHydrogen = true) {
+    std::string pdbStorage;
+    const std::string& pdbText = resolvePdbInput(pdbInput, pdbStorage);
     if (chain1.empty() || chain2.empty()) {
         throw std::runtime_error("Both chain1 and chain2 must be specified");
     }
@@ -296,9 +338,11 @@ py::array_t<double> calculateInterChainDistanceMatrix(const std::string& pdbText
 }
 
 // Calculate residue-level distance matrix (min distance between any atoms)
-py::array_t<double> calculateResidueDistanceMatrix(const std::string& pdbText,
+py::array_t<double> calculateResidueDistanceMatrix(const std::string& pdbInput,
                                                    bool excludeHydrogen = true,
                                                    const std::string& chain = "") {
+    std::string pdbStorage;
+    const std::string& pdbText = resolvePdbInput(pdbInput, pdbStorage);
     std::vector<Atom> atoms = parseAtoms(pdbText, excludeHydrogen, chain);
 
     if (atoms.empty()) {
@@ -336,10 +380,12 @@ py::array_t<double> calculateResidueDistanceMatrix(const std::string& pdbText,
 }
 
 // Calculate inter-chain residue distance matrix
-py::array_t<double> calculateInterChainResidueDistanceMatrix(const std::string& pdbText,
+py::array_t<double> calculateInterChainResidueDistanceMatrix(const std::string& pdbInput,
                                                              const std::string& chain1,
                                                              const std::string& chain2,
                                                              bool excludeHydrogen = true) {
+    std::string pdbStorage;
+    const std::string& pdbText = resolvePdbInput(pdbInput, pdbStorage);
     if (chain1.empty() || chain2.empty()) {
         throw std::runtime_error("Both chain1 and chain2 must be specified");
     }
@@ -386,9 +432,11 @@ py::array_t<double> calculateInterChainResidueDistanceMatrix(const std::string& 
 // ============================================================
 
 // Get atom information as Python dictionary
-py::dict getAtomInfo(const std::string& pdbText,
+py::dict getAtomInfo(const std::string& pdbInput,
                     bool excludeHydrogen = true,
                     const std::string& chain = "") {
+    std::string pdbStorage;
+    const std::string& pdbText = resolvePdbInput(pdbInput, pdbStorage);
     std::vector<Atom> atoms = parseAtoms(pdbText, excludeHydrogen, chain);
 
     std::vector<std::string> atomNames;
@@ -486,7 +534,7 @@ py::dict getAtomInfo(const std::string& pdbText,
 
 // Calculate number of contacts (with chain options)
 // pLDDT filtering is atom-level: both atoms forming a contact must have bfactor >= minPlddt
-int calculateContacts(const std::string& pdbText,
+int calculateContacts(const std::string& pdbInput,
                      double cutoff = 4.5,
                      bool excludeHydrogen = true,
                      const std::string& chain = "",
@@ -494,6 +542,8 @@ int calculateContacts(const std::string& pdbText,
                      const std::string& chain2 = "",
                      double minPlddt = 0.0,
                      int minSeqDist = 0) {
+    std::string pdbStorage;
+    const std::string& pdbText = resolvePdbInput(pdbInput, pdbStorage);
 
     std::vector<Atom> atoms;
     std::vector<Atom> atoms_set1, atoms_set2;
@@ -574,12 +624,14 @@ int calculateContacts(const std::string& pdbText,
 
 // Calculate contact density (contacts per residue)
 // pLDDT filtering is atom-level in the distance computation
-double calculateContactDensity(const std::string& pdbText,
+double calculateContactDensity(const std::string& pdbInput,
                                double cutoff = 4.5,
                                bool excludeHydrogen = true,
                                const std::string& chain = "",
                                int minSeqDist = 5,
                                double minPlddt = 0.0) {
+    std::string pdbStorage;
+    const std::string& pdbText = resolvePdbInput(pdbInput, pdbStorage);
     std::vector<Atom> atoms = parseAtoms(pdbText, excludeHydrogen, chain);
 
     if (atoms.empty()) {
@@ -649,12 +701,14 @@ double calculateContactDensity(const std::string& pdbText,
 // ============================================================
 
 // Delegates to calculateContacts
-int calculateInterchainContacts(const std::string& pdbText,
+int calculateInterchainContacts(const std::string& pdbInput,
                                 const std::string& chain1,
                                 const std::string& chain2,
                                 double cutoff = 4.5,
                                 bool excludeHydrogen = true,
                                 double minPlddt = 0.0) {
+    std::string pdbStorage;
+    const std::string& pdbText = resolvePdbInput(pdbInput, pdbStorage);
     if (chain1.empty() || chain2.empty()) {
         throw std::runtime_error("Both chain1 and chain2 must be specified");
     }
@@ -666,12 +720,14 @@ int calculateInterchainContacts(const std::string& pdbText,
 // ============================================================
 
 // Calculate ligand contact density (contacts / number of ligand atoms)
-double calculateLigandContactDensity(const std::string& pdbText,
+double calculateLigandContactDensity(const std::string& pdbInput,
                                      const std::string& polymerChain,
                                      const std::string& ligandChain,
                                      double cutoff = 4.5,
                                      bool excludeHydrogen = true,
                                      double minPlddt = 0.0) {
+    std::string pdbStorage;
+    const std::string& pdbText = resolvePdbInput(pdbInput, pdbStorage);
     if (polymerChain.empty() || ligandChain.empty()) {
         throw std::runtime_error("Both polymer_chain and ligand_chain must be specified");
     }
@@ -717,11 +773,13 @@ double calculateLigandContactDensity(const std::string& pdbText,
 // ============================================================
 
 // Calculate interface pLDDT (average pLDDT of interface residues)
-double calculateInterfacePlddt(const std::string& pdbText,
+double calculateInterfacePlddt(const std::string& pdbInput,
                                const std::string& chain1,
                                const std::string& chain2,
                                double cutoff = 4.5,
                                bool excludeHydrogen = true) {
+    std::string pdbStorage;
+    const std::string& pdbText = resolvePdbInput(pdbInput, pdbStorage);
     if (chain1.empty() || chain2.empty()) {
         throw std::runtime_error("Both chain1 and chain2 must be specified");
     }
@@ -751,29 +809,33 @@ double calculateInterfacePlddt(const std::string& pdbText,
         return 0.0;
     }
 
-    // Calculate average pLDDT of all atoms in interface residues
-    double sumPlddt = 0.0;
-    int atomCount = 0;
+    // Calculate per-residue mean pLDDT, then average over residues.
+    // Residue-weighted (not atom-weighted) so that residues with many atoms
+    // (e.g. nucleotides, ~22 heavy atoms) do not dominate residues with few
+    // (e.g. GLY, 4 heavy atoms) when the partners are of different polymer types.
+    std::map<ResidueId, std::pair<double, int>> residuePlddt;  // rid -> (sum, count)
 
-    for (const auto& atom : atoms1) {
-        if (interfaceResidues.count(atom.residueId())) {
-            sumPlddt += atom.bfactor;
-            atomCount++;
+    for (const auto& atoms : {atoms1, atoms2}) {
+        for (const auto& atom : atoms) {
+            ResidueId rid = atom.residueId();
+            if (interfaceResidues.count(rid)) {
+                auto& acc = residuePlddt[rid];
+                acc.first += atom.bfactor;
+                acc.second++;
+            }
         }
     }
 
-    for (const auto& atom : atoms2) {
-        if (interfaceResidues.count(atom.residueId())) {
-            sumPlddt += atom.bfactor;
-            atomCount++;
-        }
-    }
-
-    if (atomCount == 0) {
+    if (residuePlddt.empty()) {
         return 0.0;
     }
 
-    return sumPlddt / atomCount;
+    double sumPlddt = 0.0;
+    for (const auto& kv : residuePlddt) {
+        sumPlddt += kv.second.first / kv.second.second;
+    }
+
+    return sumPlddt / residuePlddt.size();
 }
 
 // ============================================================
@@ -782,7 +844,7 @@ double calculateInterfacePlddt(const std::string& pdbText,
 
 // Get list of contacting residue pairs with their residue names
 // pLDDT filtering is atom-level
-py::list getResiduePairs(const std::string& pdbText,
+py::list getResiduePairs(const std::string& pdbInput,
                             double cutoff = 4.5,
                             bool excludeHydrogen = true,
                             const std::string& chain = "",
@@ -790,6 +852,8 @@ py::list getResiduePairs(const std::string& pdbText,
                             const std::string& chain2 = "",
                             double minPlddt = 0.0,
                             int minSeqDist = 0) {
+    std::string pdbStorage;
+    const std::string& pdbText = resolvePdbInput(pdbInput, pdbStorage);
 
     std::vector<Atom> atoms;
     std::vector<Atom> atoms_set1, atoms_set2;
@@ -893,7 +957,7 @@ py::list getResiduePairs(const std::string& pdbText,
 
 // Get list of contacting atom pairs (atoms not in the same residue)
 // pLDDT filtering is atom-level
-py::list getAtomPairs(const std::string& pdbText,
+py::list getAtomPairs(const std::string& pdbInput,
                       double cutoff = 4.5,
                       bool excludeHydrogen = true,
                       const std::string& chain = "",
@@ -901,6 +965,8 @@ py::list getAtomPairs(const std::string& pdbText,
                       const std::string& chain2 = "",
                       double minPlddt = 0.0,
                       int minSeqDist = 0) {
+    std::string pdbStorage;
+    const std::string& pdbText = resolvePdbInput(pdbInput, pdbStorage);
 
     std::vector<Atom> atoms;
     std::vector<Atom> atoms_set1, atoms_set2;
@@ -977,12 +1043,14 @@ py::list getAtomPairs(const std::string& pdbText,
 
 // Calculate contact order (average sequence separation of contacts, normalized by length)
 // Formula: CO = (1 / (L * N)) * sum(|i - j|) for all contacting pairs (i, j)
-py::dict calculateContactOrder(const std::string& pdbText,
+py::dict calculateContactOrder(const std::string& pdbInput,
                                double cutoff = 4.5,
                                bool excludeHydrogen = true,
                                const std::string& chain = "",
                                int minSeqDist = 1,
                                double minPlddt = 0.0) {
+    std::string pdbStorage;
+    const std::string& pdbText = resolvePdbInput(pdbInput, pdbStorage);
     std::vector<Atom> atoms = parseAtoms(pdbText, excludeHydrogen, chain);
 
     if (atoms.empty()) {
@@ -1096,7 +1164,7 @@ py::dict calculateContactOrder(const std::string& pdbText,
 // Calculate clashscore (ChimeraX-style parameters).
 // Overlap = (VDW_A + VDW_B) - distance - hbond_allowance (for donor-acceptor pairs).
 // Exclusions: same-residue pairs, and same-chain pairs within min_seq_dist.
-py::dict calculateClashScore(const std::string& pdbText,
+py::dict calculateClashScore(const std::string& pdbInput,
                              double overlapThreshold = 0.6,
                              double hbondAllowance = 0.4,
                              bool excludeHydrogen = true,
@@ -1104,6 +1172,8 @@ py::dict calculateClashScore(const std::string& pdbText,
                              double minPlddt = 0.0,
                              int minSeqDist = 2,
                              double bondViolThreshold = 0.5) {
+    std::string pdbStorage;
+    const std::string& pdbText = resolvePdbInput(pdbInput, pdbStorage);
 
     std::vector<Atom> atoms = parseAtoms(pdbText, excludeHydrogen, chain);
 
@@ -1269,7 +1339,7 @@ py::dict calculateClashScore(const std::string& pdbText,
 // 2. Collect all atoms belonging to interface residues from both chains
 // 3. Count clashes among those atoms (inter-chain + intra-chain interface)
 // 4. Compute average pLDDT of interface atoms
-py::dict calculateInterfaceQuality(const std::string& pdbText,
+py::dict calculateInterfaceQuality(const std::string& pdbInput,
                                     const std::string& chain1,
                                     const std::string& chain2,
                                     double interfaceCutoff = 8.0,
@@ -1278,6 +1348,8 @@ py::dict calculateInterfaceQuality(const std::string& pdbText,
                                     bool excludeHydrogen = true,
                                     double minPlddt = 0.0,
                                     int minSeqDist = 2) {
+    std::string pdbStorage;
+    const std::string& pdbText = resolvePdbInput(pdbInput, pdbStorage);
 
     if (chain1.empty() || chain2.empty()) {
         throw std::runtime_error("Both chain1 and chain2 must be specified");
@@ -1405,7 +1477,7 @@ PYBIND11_MODULE(pdb_contacts, m) {
           py::arg("chain") = "",
           "Calculate atom-level distance matrix from PDB text.\n\n"
           "Parameters:\n"
-          "  pdb_text: PDB format text\n"
+          "  pdb_text: PDB format text, or a path to a PDB file\n"
           "  exclude_hydrogen: Skip hydrogen atoms (default: True)\n"
           "  chain: Chain filter - comma-separated chain IDs, e.g. 'A,B' for chains A and B (default: all)\n\n"
           "Returns:\n"
@@ -1418,7 +1490,7 @@ PYBIND11_MODULE(pdb_contacts, m) {
           py::arg("exclude_hydrogen") = true,
           "Calculate atom-level distance matrix between two chain groups.\n\n"
           "Parameters:\n"
-          "  pdb_text: PDB format text\n"
+          "  pdb_text: PDB format text, or a path to a PDB file\n"
           "  chain1: First chain group, e.g. 'A' or 'A,B'\n"
           "  chain2: Second chain group, e.g. 'C' or 'B,C'\n"
           "  exclude_hydrogen: Skip hydrogen atoms (default: True)\n\n"
@@ -1431,7 +1503,7 @@ PYBIND11_MODULE(pdb_contacts, m) {
           py::arg("chain") = "",
           "Calculate residue-level distance matrix (minimum distance between any atoms of two residues).\n\n"
           "Parameters:\n"
-          "  pdb_text: PDB format text\n"
+          "  pdb_text: PDB format text, or a path to a PDB file\n"
           "  exclude_hydrogen: Skip hydrogen atoms (default: True)\n"
           "  chain: Chain filter - comma-separated chain IDs, e.g. 'A,B' (default: all)\n\n"
           "Returns:\n"
@@ -1444,7 +1516,7 @@ PYBIND11_MODULE(pdb_contacts, m) {
           py::arg("exclude_hydrogen") = true,
           "Calculate residue-level distance matrix between two chain groups.\n\n"
           "Parameters:\n"
-          "  pdb_text: PDB format text\n"
+          "  pdb_text: PDB format text, or a path to a PDB file\n"
           "  chain1: First chain group, e.g. 'A' or 'A,B'\n"
           "  chain2: Second chain group, e.g. 'C' or 'B,C'\n"
           "  exclude_hydrogen: Skip hydrogen atoms (default: True)\n\n"
@@ -1457,7 +1529,7 @@ PYBIND11_MODULE(pdb_contacts, m) {
           py::arg("chain") = "",
           "Get atom and residue information as Python dictionary.\n\n"
           "Parameters:\n"
-          "  pdb_text: PDB format text\n"
+          "  pdb_text: PDB format text, or a path to a PDB file\n"
           "  exclude_hydrogen: Skip hydrogen atoms (default: True)\n"
           "  chain: Chain filter - comma-separated chain IDs, e.g. 'A,B' (default: all)\n\n"
           "Returns:\n"
@@ -1487,7 +1559,7 @@ PYBIND11_MODULE(pdb_contacts, m) {
           "pLDDT filtering is atom-level: both atoms forming a contact must have\n"
           "bfactor >= min_plddt for the contact to count.\n\n"
           "Parameters:\n"
-          "  pdb_text: PDB format text\n"
+          "  pdb_text: PDB format text, or a path to a PDB file\n"
           "  cutoff: Distance cutoff in Angstroms (default: 4.5)\n"
           "  exclude_hydrogen: Skip hydrogen atoms (default: True)\n"
           "  chain: Calculate contacts within chain(s), e.g. 'A' or 'A,B'\n"
@@ -1508,7 +1580,7 @@ PYBIND11_MODULE(pdb_contacts, m) {
           "Formula: CD = C / N, where C is number of contacts and N is number of residues.\n"
           "pLDDT filtering is atom-level: both atoms must have bfactor >= min_plddt.\n\n"
           "Parameters:\n"
-          "  pdb_text: PDB format text\n"
+          "  pdb_text: PDB format text, or a path to a PDB file\n"
           "  cutoff: Distance cutoff in Angstroms (default: 4.5)\n"
           "  exclude_hydrogen: Skip hydrogen atoms (default: True)\n"
           "  chain: Chain filter - comma-separated chain IDs, e.g. 'A,B' (default: all)\n"
@@ -1527,7 +1599,7 @@ PYBIND11_MODULE(pdb_contacts, m) {
           "Calculate number of residue contacts between two chain groups.\n\n"
           "pLDDT filtering is atom-level: both atoms must have bfactor >= min_plddt.\n\n"
           "Parameters:\n"
-          "  pdb_text: PDB format text\n"
+          "  pdb_text: PDB format text, or a path to a PDB file\n"
           "  chain1: First chain group, e.g. 'A' or 'A,B'\n"
           "  chain2: Second chain group, e.g. 'C' or 'B,C'\n"
           "  cutoff: Distance cutoff in Angstroms (default: 4.5)\n"
@@ -1546,7 +1618,7 @@ PYBIND11_MODULE(pdb_contacts, m) {
           "Calculate ligand contact density (contacts / number of ligand atoms).\n\n"
           "pLDDT filtering is atom-level: both atoms must have bfactor >= min_plddt.\n\n"
           "Parameters:\n"
-          "  pdb_text: PDB format text\n"
+          "  pdb_text: PDB format text, or a path to a PDB file\n"
           "  polymer_chain: Polymer chain(s), e.g. 'A' or 'A,B' for chains A and B\n"
           "  ligand_chain: Ligand chain(s), e.g. 'B' or 'B,C' for ATP(B) + MG(C)\n"
           "  cutoff: Distance cutoff in Angstroms (default: 4.5)\n"
@@ -1563,9 +1635,11 @@ PYBIND11_MODULE(pdb_contacts, m) {
           py::arg("exclude_hydrogen") = true,
           "Calculate average pLDDT of interface residues.\n\n"
           "Interface residues are those with any atom within cutoff distance\n"
-          "of the other chain group. Returns average B-factor of all atoms in these residues.\n\n"
+          "of the other chain group. Each interface residue's pLDDT is the mean\n"
+          "B-factor of its atoms, and the result is the mean over residues\n"
+          "(residue-weighted, so large residues do not outweigh small ones).\n\n"
           "Parameters:\n"
-          "  pdb_text: PDB format text\n"
+          "  pdb_text: PDB format text, or a path to a PDB file\n"
           "  chain1: First chain group, e.g. 'A' or 'A,B'\n"
           "  chain2: Second chain group, e.g. 'C' or 'B,C'\n"
           "  cutoff: Distance cutoff in Angstroms (default: 4.5)\n"
@@ -1586,7 +1660,7 @@ PYBIND11_MODULE(pdb_contacts, m) {
           "  Absolute CO = (1 / N) * sum(|i - j|)\n"
           "pLDDT filtering is atom-level: both atoms must have bfactor >= min_plddt.\n\n"
           "Parameters:\n"
-          "  pdb_text: PDB format text\n"
+          "  pdb_text: PDB format text, or a path to a PDB file\n"
           "  cutoff: Distance cutoff in Angstroms (default: 4.5)\n"
           "  exclude_hydrogen: Skip hydrogen atoms (default: True)\n"
           "  chain: Chain filter - comma-separated chain IDs, e.g. 'A,B' (default: all)\n"
@@ -1612,7 +1686,7 @@ PYBIND11_MODULE(pdb_contacts, m) {
           "Get list of contacting residue pairs with residue names.\n\n"
           "pLDDT filtering is atom-level: both atoms must have bfactor >= min_plddt.\n\n"
           "Parameters:\n"
-          "  pdb_text: PDB format text\n"
+          "  pdb_text: PDB format text, or a path to a PDB file\n"
           "  cutoff: Distance cutoff in Angstroms (default: 4.5)\n"
           "  exclude_hydrogen: Skip hydrogen atoms (default: True)\n"
           "  chain: Chain filter, e.g. 'A' or 'A,B'\n"
@@ -1634,7 +1708,7 @@ PYBIND11_MODULE(pdb_contacts, m) {
           "Get list of contacting atom pairs (atoms not in the same residue).\n\n"
           "pLDDT filtering is atom-level: both atoms must have bfactor >= min_plddt.\n\n"
           "Parameters:\n"
-          "  pdb_text: PDB format text\n"
+          "  pdb_text: PDB format text, or a path to a PDB file\n"
           "  cutoff: Distance cutoff in Angstroms (default: 4.5)\n"
           "  exclude_hydrogen: Skip hydrogen atoms (default: True)\n"
           "  chain: Chain filter, e.g. 'A' or 'A,B'\n"
@@ -1669,7 +1743,7 @@ PYBIND11_MODULE(pdb_contacts, m) {
           "stays O(n_atoms). Each violation adds a flat 0.1 to the clashscore (size-\n"
           "independent), so a single broken bond dominates clash noise and ~10 saturate it.\n\n"
           "Parameters:\n"
-          "  pdb_text: PDB format text\n"
+          "  pdb_text: PDB format text, or a path to a PDB file\n"
           "  overlap_threshold: Minimum VDW overlap in Angstroms (default: 0.6, ChimeraX default)\n"
           "  hbond_allowance: Overlap allowance for H-bond pairs in Angstroms (default: 0.4)\n"
           "  exclude_hydrogen: Skip hydrogen atoms (default: True)\n"
@@ -1700,7 +1774,7 @@ PYBIND11_MODULE(pdb_contacts, m) {
           "then counts clashes among ALL interface atoms (both inter-chain and intra-chain\n"
           "clashes within interface residues).\n\n"
           "Parameters:\n"
-          "  pdb_text: PDB format text\n"
+          "  pdb_text: PDB format text, or a path to a PDB file\n"
           "  chain1: First chain group, e.g. 'A' or 'A,B'\n"
           "  chain2: Second chain group, e.g. 'C' or 'B,C'\n"
           "  interface_cutoff: Distance cutoff to define interface residues (default: 8.0)\n"

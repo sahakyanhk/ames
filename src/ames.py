@@ -63,7 +63,7 @@ def fold_evolution_simulator() -> None:
     with open(logpath, 'w') as f:
         f.write(loghead)
 
-    init_gen = create_init_gen(evolver, args)
+    init_gen = create_init_gen(evolver1, evolver2, args)
     init_gen.to_csv(logpath, mode='a', index=False, header=True, sep='\t')
 
     sequence_lookup = build_sequence_lookup(init_gen)
@@ -102,14 +102,14 @@ def fold_evolution_simulator() -> None:
 
             #  mutate each sequence separately
             if mutate_seq1:
-                seq1, mutation_data1 = evolver.mutate(args.seq1_type, sequence_data['seq1']['sequence'])
+                seq1, mutation_data1 = evolver1.mutate(args.seq1_type, sequence_data['seq1']['sequence'])
                 seq_data["seq1"]["sequence"] = seq1 
                 seq_data["seq1"]["len"] = len(seq1) 
             else: 
                 mutation_data1 = "none"
                 
             if args.seq2_evol and mutate_seq2:            
-                seq2, mutation_data2 = evolver.mutate(args.seq2_type, sequence_data['seq2']['sequence'])
+                seq2, mutation_data2 = evolver2.mutate(args.seq2_type, sequence_data['seq2']['sequence'])
                 seq_data["seq2"]["sequence"] = seq2
                 seq_data["seq2"]["len"] = len(seq2) 
             else: 
@@ -127,14 +127,14 @@ def fold_evolution_simulator() -> None:
             if args.norepeat and repeat_row is not None:
                 while repeat_row is not None:
                     if mutate_seq1:
-                        seq1, mutation_data1 = evolver.mutate(args.seq1_type, sequence_data['seq1']['sequence'])
+                        seq1, mutation_data1 = evolver1.mutate(args.seq1_type, sequence_data['seq1']['sequence'])
                         seq_data["seq1"]["sequence"] = seq1
                         seq_data["seq1"]["len"] = len(seq1)
                     else:
                         mutation_data1 = "none"
 
                     if args.seq2_evol and mutate_seq2:
-                        seq2, mutation_data2 = evolver.mutate(args.seq2_type, sequence_data['seq2']['sequence'])
+                        seq2, mutation_data2 = evolver2.mutate(args.seq2_type, sequence_data['seq2']['sequence'])
                         seq_data["seq2"]["sequence"] = seq2
                         seq_data["seq2"]["len"] = len(seq2)
                     else:
@@ -196,7 +196,7 @@ def fold_evolution_simulator() -> None:
         sequence_lookup.update(build_sequence_lookup(init_gen))
 
         #select the next generation 
-        init_gen = evolver.select(new_gen, init_gen, args.pop_size, args.selection_mode, args.norepeat, args.beta)
+        init_gen = Evolver.select(new_gen, init_gen, args.pop_size, args.selection_mode, args.norepeat, args.beta)
         init_gen.gndx = gen_i #assign a new gen index
         init_gen.to_csv(logpath, mode='a', index=False, header=False, sep='\t')
 
@@ -226,7 +226,7 @@ def extract_results(gen_i: int,
     structures, plddts, ptms, iptms = structure_predictor_ouptut
 
     #RFAM function reward 
-    if args.rfam_scoring and args.seq1_type == "rna" or args.seq2_type == "rna":
+    if args.rfam_scoring and (args.seq1_type == "rna" or args.seq2_type == "rna"):
         if args.rfam_scoring == "seq1":
             rna_sequences = [seq_data["seq1"]["sequence"] for seq_data in sequence_data_batch]
             rfam_results = rna_seq_search(headers, rna_sequences, tmp="/tmp/", keep_tmp=False)
@@ -480,14 +480,23 @@ def extract_results(gen_i: int,
 
 args = parse_args()
 
-evolver = Evolver(protein_alphabet = args.protein_alphabet,
-                  rna_alphabet = args.rna_alphabet,
-                  dna_alphabet = args.dna_alphabet,
-                  protein_mutations = args.protein_mutations,
-                  rna_mutations = args.rna_mutations,
-                  dna_mutations = args.dna_mutations
+evolver1 = Evolver(protein_alphabet = args.protein_alphabet1,
+                  rna_alphabet = args.rna_alphabet1,
+                  dna_alphabet = args.dna_alphabet1,
+                  protein_mutations = args.protein_mutations1,
+                  rna_mutations = args.rna_mutations1,
+                  dna_mutations = args.dna_mutations1
                   ) 
-
+if args.seq2:
+    evolver2 = Evolver(protein_alphabet = args.protein_alphabet2,
+                  rna_alphabet = args.rna_alphabet2,
+                  dna_alphabet = args.dna_alphabet2,
+                  protein_mutations = args.protein_mutations2,
+                  rna_mutations = args.rna_mutations2,
+                  dna_mutations = args.dna_mutations2
+                  ) 
+else:
+    evolver2 = None
 
 protein_seqstat = Seqstat(str(DATA_DIR / 'pfam80_stat.json'))
 rna_seqstat = Seqstat(str(DATA_DIR / 'rnacentral90_stat.json'))
