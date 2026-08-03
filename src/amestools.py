@@ -13,6 +13,7 @@ from pathlib import Path
 from datetime import datetime
 
 from seqtools import Seqstat
+from _version import get_version
 
 # Resolve repo root from this file's location so paths work from any directory
 DATA_DIR = Path(__file__).resolve().parent / "data/"
@@ -357,7 +358,9 @@ def generate_loghead(args) -> str:
 
     params = [f"#--{param:<24} = {value}\n" for param, value in vars(args).items()]
 
-    loghead = f'''#======================== AMESv0.1 ========================#
+    banner = f" AMES {get_version()} ".center(56, "=")
+
+    loghead = f'''#{banner}#
 #WD: {os.getcwd()}
 #${' '.join(sys.argv)}
 #
@@ -638,8 +641,8 @@ class ScoringFunction:
             'NUCLEIC_EVOLUTION':                    {"ptm": 0.5, "plddt": 0.5, "iptm": 0.0,  "iplddt": 0.0,  "cd": 0.0,  "lcd": 0.0},
             'PROTEIN_PROTEIN_EVOLUTION':            {"ptm": 0.2, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.25, "cd": 0.2, "lcd": 0.0},
             'PROTEIN_PROTEIN_COEVOLUTION':          {"ptm": 0.2, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.25, "cd": 0.2, "lcd": 0.0},
-            'PROTEIN_NUCLEIC_EVOLUTION':            {"ptm": 0.2, "plddt": 0.1, "iptm": 0.3, "iplddt": 0.3, "cd": 0.1, "lcd": 0.0},
-            'PROTEIN_NUCLEIC_COEVOLUTION':          {"ptm": 0.2, "plddt": 0.1, "iptm": 0.3, "iplddt": 0.3, "cd": 0.1, "lcd": 0.0},
+            'PROTEIN_NUCLEIC_EVOLUTION':            {"ptm": 0.2, "plddt": 0.2, "iptm": 0.3, "iplddt": 0.3, "cd": 0.1, "lcd": 0.0},
+            'PROTEIN_NUCLEIC_COEVOLUTION':          {"ptm": 0.2, "plddt": 0.2, "iptm": 0.3, "iplddt": 0.3, "cd": 0.1, "lcd": 0.0},
             'NUCLEIC_NUCLEIC_EVOLUTION':            {"ptm": 0.2, "plddt": 0.2, "iptm": 0.3, "iplddt": 0.3, "cd": 0.0, "lcd": 0.0},
             'NUCLEIC_NUCLEIC_COEVOLUTION':          {"ptm": 0.2, "plddt": 0.2, "iptm": 0.3, "iplddt": 0.3, "cd": 0.0, "lcd": 0.0},
             'PROTEIN_LIGAND_EVOLUTION':             {"ptm": 0.1, "plddt": 0.1, "iptm": 0.2, "iplddt": 0.2, "cd": 0.2, "lcd": 0.2},
