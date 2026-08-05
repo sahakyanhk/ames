@@ -12,7 +12,7 @@ ext_modules = [
 ]
 
 setup(
-    name='pdb_contacts',
+    name='ames',
     version='1.0.0',
     ext_modules=ext_modules,
     # This makes pip install it properly to site-packages
