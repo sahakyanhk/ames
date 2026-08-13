@@ -60,18 +60,12 @@ def rna_ss_penalty(rna_ss: str) -> float:
 #     else:
 #         print("The input should be eather string or list of strings")
 
-# def sigmoid(x, L0=0.0, c=0.1) -> float:
-#     z = c * (L0 - x)
-#     # Clip to prevent overflow
-#     z = np.clip(z, -709, 709)  # e^500 is near max float, e^-500 is near 0
-#     return 1 / (1 + np.exp(z))
-
 
 def norm_evalues(evalues, L0=10.0, c=0.5):
     e = np.atleast_1d(np.asarray(evalues, dtype=float))
     nle = -np.log10(np.clip(e, 1e-300, None))   
     out = np.where(nle > 0, sigmoid(nle, L0=L0, c=c), 0.0)  # E>=1 -> 0
-    return out.tolist()
+    return np.round(out, decimals=3).tolist()
 
 
 def rna_seq_search(headers, sequences, tmp="/tmp/", keep_tmp=False):
