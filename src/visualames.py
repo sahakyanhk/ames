@@ -178,7 +178,7 @@ def make_plots(log, bestlog, lineage):
                 ax1.set(xlabel="Total number of mutations", ylabel=colname.capitalize())
                 #ax2 = ax1.twiny()
                 #ax2.plot(lineage[colname].tolist(),'-', linewidth=lw, color='mediumslateblue')
-                #ax2.set(xlabel="Lineage length")
+                #ax2.set(xlabel="Lineage lenght")
                 fig.tight_layout()
                 fig.savefig(plotdir + colname + '.png', dpi=dpi)
                 fig.clf()

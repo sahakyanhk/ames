@@ -1,7 +1,7 @@
 #!/bin/bash
 #set -e
 
-runs="${1:?Usage: $0 <runs_dir> [run_va]}"
+runs="${1:?Usage: $0 <runs_dir> [visualames]}"
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -16,7 +16,7 @@ if [ -d "summary" ]; then
 fi
 
 
-if [[ "$2" == "run_va" || "$3" == "run_va" ]]; then
+if [[ "$2" == "visualames" || "$3" == "visualames" ]]; then
     for dir in `ls -d run*/`; do 
         visualames.py -l  $dir/progress.log  ; 
     done
@@ -37,13 +37,14 @@ get_last_seq() {
 summary_pdb="summary/pdb"
 summary_seq="summary/sequence"
 summary_log="summary/lineage"
-summary_plot="summary/allplot"
+#summary_plot="summary/allplot"
 summary_summary="summary/summary_general"
 summary_lineage_summary="summary/summary_lineage"
 summarytsv="summary/summary_final.tsv"
-batch_summary="summary/summary_batch"
+batch_summary_lineage="summary/summary_batch_lineage"
+batch_summary_bestlog="summary/summary_batch_bestlog"
 
-mkdir -p "$summary_pdb" "$summary_seq" "$summary_log" "$summary_plot" "$summary_summary" "$summary_lineage_summary" "$batch_summary"
+mkdir -p "$summary_pdb" "$summary_seq" "$summary_log" "$summary_summary" "$summary_lineage_summary" "$batch_summary_lineage" "$batch_summary_bestlog"
 
 for run in run*/; do 
     base=${run::-1}
@@ -54,7 +55,7 @@ for run in run*/; do
     
     final_pdb=$(ls "${run}/structures/" | sort -V | tail -n 1)
     cp "${run}/structures/$final_pdb" "$summary_pdb/${base}_final.pdb"
-    cp -r "${run}/plots/" "$summary_plot/${base}/"
+#    cp -r "${run}/plots/" "$summary_plot/${base}/"
 
     cp "${run}/bestlog.tsv" "$summary_log/${base}_bestlog.tsv"
     cp "${run}/lineage.tsv" "$summary_log/${base}_lineage.tsv"
@@ -76,20 +77,23 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-def summary_plot_with_violin(basedir, param='seq1_stat'):
+def summary_plot_with_violin(basedir, outdir, suffix='_lineage.tsv', param='seq1_stat'):
     param_list = []      # param value indexed by generation (gndx), per run
     lineage_lengths = [] # number of ancestors in the lineage chain, per run
     final_values = []
 
-    for lineage in sorted(os.listdir(basedir)):
-        if lineage.endswith("_lineage.tsv"):
-            df = pd.read_csv(f"{basedir}/{lineage}", sep='\t')
+    for fname in sorted(os.listdir(basedir)):
+        if fname.endswith(suffix):
+            df = pd.read_csv(f"{basedir}/{fname}", sep='\t')
             if param not in df.columns:
                 return
             df = df.drop_duplicates(subset='gndx', keep='last')
             param_list.append(pd.Series(df[param].values, index=df['gndx'].values))
             lineage_lengths.append(df.shape[0])
             final_values.append(df[param].iloc[-1])
+
+    if not param_list:
+        return
 
     # Each run advances through generations sparsely (a lineage skips generations
     # where it produced no surviving ancestor). Reindex every run onto a common
@@ -114,31 +118,34 @@ def summary_plot_with_violin(basedir, param='seq1_stat'):
     n_runs = combined.shape[1]
     mean_series = combined.mean(axis=1, skipna=True)
     median_series = combined.median(axis=1, skipna=True)
-    ax1.plot(grid, median_series.values, color='red', linewidth=2, alpha=0.7, label='median')
-    ax1.plot(grid, mean_series.values, color='black', linewidth=2, label='mean')
+    ax1.plot(grid, median_series.values, color='#800080', linewidth=2, alpha=0.7, label='median')
+    ax1.plot(grid, mean_series.values, color='#6495ED', linewidth=2, label='mean')
     ax1.set_xlabel('Generation')
     ax1.set_ylabel(param)
     avg_lineage_length = np.mean(lineage_lengths)
-    ax1.legend(title=f'n={n_runs}\navg lineage length={avg_lineage_length:.0f}', loc='lower right')
+    ax1.legend(title=f'number of runs = {n_runs}\navg lineage length = {avg_lineage_length:.0f}', loc='lower right')
 
     parts = ax2.violinplot(final_values, positions=[0], showmeans=True, showmedians=True)
-    parts['cmedians'].set_color('black')
-    parts['cmeans'].set_color('red')
+    parts['cmedians'].set_color('#800080')
+    parts['cmeans'].set_color('#6495ED')
     ax2.set_xticks([0])
     ax2.set_xticklabels([param])
     ax2.set_ylabel(param)
 
     plt.tight_layout()
-    plt.savefig(f"$batch_summary/{param}.png")
+    plt.savefig(f"{outdir}/{param}.png")
     plt.clf()
     plt.close()
 
-for param in ['plddt', 'ptm', 'iplddt', 'iptm', 'score', 'evolrate',
-            'seq1_stat', 'seq2_stat', 'n_atoms', 'cd', 'lcd', 
-            'seq1_len', 'seq2_len', 'clashscore', 'num_clashes']:
+params = ['plddt', 'ptm', 'iplddt', 'iptm', 'score', 'evolrate',
+          'seq1_stat', 'seq2_stat', 'n_atoms', 'cd', 'lcd',
+          'seq1_len', 'seq2_len', 'clashscore', 'num_clashes', 'rfam_score', 'beta']
 
-    print(f"generating summary plot for {param}...", end='\x1b[1K\r')
-    summary_plot_with_violin("$summary_log", param=param)
+for label, outdir, suffix in [("lineage", "$batch_summary_lineage", "_lineage.tsv"),
+                              ("bestlog", "$batch_summary_bestlog", "_bestlog.tsv")]:
+    for param in params:
+        print(f"generating {label} summary plot for {param}...", end='\x1b[1K\r')
+        summary_plot_with_violin("$summary_log", outdir, suffix=suffix, param=param)
 
 
 
@@ -146,8 +153,9 @@ print("done", end='\x1b[1K\r')
 
 EOF
 
-if [[ "$2" == "rnpclust" || "$3" == "rnpclust" ]]; then
-    echo "clustering complexes with RNPclust"
-    rnpclust -i "summary/pdb" -o "summary/rnpclust" -c 0.5
+if [[ "$2" == "avaclust" || "$3" == "avaclust" ]]; then
+    echo "clustering complexes with avaclust"
+    avaclust -i "summary/pdb" -o "summary/clust" -c 0.4 --chains A
+    avaclust -i "summary/pdb" -o "summary/allclust" -c 0.1 --chains A
 fi
 
