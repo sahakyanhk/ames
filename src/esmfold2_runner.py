@@ -59,7 +59,7 @@ def esmfold2_runner(input_fold_list: list[dict] | list[list[dict]]) -> tuple[lis
         spi = StructurePredictionInput(sequences=fold_input)
         results[ndx] = ESMFold2InputBuilder().fold(model, 
                                                     spi, 
-                                                    num_loops=3, 
+                                                    num_loops=10, 
                                                     num_sampling_steps=50, 
                                                     num_diffusion_samples=3, 
                                                     seed=0
@@ -104,4 +104,6 @@ def esmfold2_runner(input_fold_list: list[dict] | list[list[dict]]) -> tuple[lis
         iptms.append(round(iptm, 3))
 
     return (structures, plddts, ptms, iptms)  # type: ignore
+
+
 

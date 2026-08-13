@@ -20,7 +20,7 @@
     "beta_target": null,
     "annealing_start": null,
     "annealing_end": null,
-    "annealing_mode": null,
+    "annealing_mode": "linear",
     "annealing_step": null,
     "iseq1": null,
     "seq1_init": "random",

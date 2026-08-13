@@ -358,7 +358,7 @@ def generate_loghead(args) -> str:
 
     params = [f"#--{param:<24} = {value}\n" for param, value in vars(args).items()]
 
-    banner = f" AMES {get_version()} ".center(56, "=")
+    banner = f" AMES v{get_version()} ".center(56, "=")
 
     loghead = f'''#{banner}#
 #WD: {os.getcwd()}

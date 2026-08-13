@@ -22,7 +22,7 @@ from evolution import Evolver
 from seqtools import Seqstat
 import pdb_contacts as pc
 from psique import pypsique
-from rnatools import rna_ss_penalty, rna_secondary_structure, rna_seq_search
+from rnatools import rna_ss_penalty, rna_secondary_structure, rna_seq_search, RFAM_DB
 
 from amestools import (parse_args,
                        generate_loghead,
@@ -43,6 +43,8 @@ from amestools import (parse_args,
 
 
 write_lock = threading.Lock()
+
+MAX_INCOMPLETE_GENERATIONS = 10 # abort after this many generations lost a batch to a dead extract_results() thread
 
 
 #========================================================================================#
@@ -68,8 +70,10 @@ def fold_evolution_simulator() -> None:
 
     sequence_lookup = build_sequence_lookup(init_gen)
     print_genlog(init_gen, args)
-    
-    #mutate seqs from init_gen and select the best N seqs for the next generation    
+
+    incomplete_generations = 0
+
+    #mutate seqs from init_gen and select the best N seqs for the next generation
     for gen_i in range(1, args.num_generations):
 
         n = 0 # seq n
@@ -169,7 +173,7 @@ def fold_evolution_simulator() -> None:
 
 
 
-            #run extract_results() in beckground and imediately start next the round of model.infer()
+            #run extract_results() in beckground and imediately start next the round of inference
             trd = threading.Thread(target=extract_results, \
                         args=(gen_i, headers, sequence_data_batch, structure_predictor_ouptut, args))
             trd.start()
@@ -178,8 +182,21 @@ def fold_evolution_simulator() -> None:
 
         for t in threads:
                 t.join()
-        
-        # calculate the homogeneity of the generation, 
+
+        # an extract_results() thread that died dropped its whole batch without raising in the main thread
+        expected_rows = len(repeat_rows) + len(generated_sequences)
+        if len(new_gen) != expected_rows:
+            incomplete_generations += 1
+            print(f"#WARNING! generation {gen_i} is incomplete, {len(new_gen)}/{expected_rows} sequences returned "
+                  f"({incomplete_generations}/{MAX_INCOMPLETE_GENERATIONS}), see the traceback above")
+
+            if incomplete_generations >= MAX_INCOMPLETE_GENERATIONS:
+                raise RuntimeError(f"{incomplete_generations} incomplete generations, extract_results() keeps failing")
+
+            if new_gen.empty: #nothing to select from, remutate the same init_gen
+                continue
+
+        # calculate the homogeneity of the generation,
         # whole generation is needed to calculate the homogeneity, therefore it is not calculated in extract_results()
         new_gen['homogen'] = calculate_homogeneity(new_gen)
 
@@ -479,6 +496,13 @@ def extract_results(gen_i: int,
 
 
 args = parse_args()
+
+#preflight, a missing cmscan/Rfam db would otherwise only show up as a dead extract_results() thread
+if args.rfam_scoring:
+    if shutil.which("cmscan") is None:
+        raise FileNotFoundError("--rfam_scoring needs cmscan, install infernal in the active environment")
+    if not RFAM_DB.exists():
+        raise FileNotFoundError(f"--rfam_scoring needs an Rfam database, {RFAM_DB} not found")
 
 evolver1 = Evolver(protein_alphabet = args.protein_alphabet1,
                   rna_alphabet = args.rna_alphabet1,
