@@ -12,7 +12,7 @@ from amestools import sigmoid
 
 from pathlib import Path
 _PKG_ROOT = Path(__file__).resolve().parent.parent   # ames/
-RFAM_DB = _PKG_ROOT / "rfam" / "Rfam100.cm"
+RFAM_DB = _PKG_ROOT / "rfam" / "Rfam.cm"
 
 
 def rna_secondary_structure(pdb_text, chain="A"):
@@ -61,7 +61,7 @@ def rna_ss_penalty(rna_ss: str) -> float:
 #         print("The input should be eather string or list of strings")
 
 
-def norm_evalues(evalues, L0=10.0, c=0.5):
+def norm_evalues(evalues, L0=5, c=0.5):
     e = np.atleast_1d(np.asarray(evalues, dtype=float))
     nle = -np.log10(np.clip(e, 1e-300, None))   
     out = np.where(nle > 0, sigmoid(nle, L0=L0, c=c), 0.0)  # E>=1 -> 0
