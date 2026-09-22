@@ -399,4 +399,4 @@ print('#================================================#\n')
 
 
 def main() -> None:
-    """Console entry point (`ames-viz`). The module body above does the work."""
+    """Console entry point (`visualames`). The module body above does the work."""
