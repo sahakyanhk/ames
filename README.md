@@ -31,7 +31,6 @@ Install [AlphaFold3](https://github.com/google-deepmind/alphafold3/blob/main/doc
 ```
 ames --iseq1 'protein:randoms:65:evolv' --seq1_rate 0.5 \
      --iseq2 'rna:randoms:12:evolv' --seq2_rate 1 \
-     -pm npm -rm pmo \
      -ps 100 -ng 1000 \
      -ann -ann_s 150 -ann_e 999 \
      -b0 0.8 -bt 8.0 \
@@ -51,7 +50,7 @@ Use [AMESViewer](https://github.com/sahakyanhk/ames_viewer) to visualize and ana
 **Single protein fold evolution simulation with ESMFold as in [PFES](https://www.pnas.org/doi/10.1073/pnas.2509015122) paper** 
 ```
 ames --iseq1 'protein:randoms:65:evolv' --seq1_rate 1 \
-     -pm pmo -ps 100 -ng 1000 \
+     -pm1 pmo -ps 100 -ng 1000 \
      --engine esmfold \
      -o outputs/esmfold_test
 
