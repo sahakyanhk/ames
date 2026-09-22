@@ -1,19 +1,27 @@
 # AMES: atomistic molecular evolution simulator
 
-### Experimental code for simulating structural evolution of protein, RNA and their complexes with atomistic models.
+### Simulating structural evolution of protein and RNA folds with all-atom models.
 
 ## Installation
 
+**Install ames with ESMfold2** (needs python >= 3.10 and a C++17 compiler)
 ```
 pip install "ames[esmfold2] @ git+https://github.com/sahakyanhk/ames"
 ```
-this will install ames with ESMfold2,
-for a local checkout run:
+
+**Clone repo for local development**
 ```
 git clone https://github.com/sahakyanhk/ames.git && cd ames
 pip install -e .
 ```
-Needs python >= 3.10 and a C++17 compiler.
+
+***Install in an environment***
+```
+micromamba create -n ames-esm python=3.12
+micromamba activate ames-esm
+pip install git+https://github.com/sahakyanhk/ames.git
+pip install esm
+```
 
 Install [AlphaFold3](https://github.com/google-deepmind/alphafold3/blob/main/docs/installation.md), [OpenFold3](https://github.com/aqlaboratory/openfold-3?tab=readme-ov-file#quick-start-for-inference), or ESMFold via [Transformers](https://github.com/huggingface/transformers?tab=readme-ov-file#installation) as an alternative engine if needed.
 
@@ -36,7 +44,7 @@ This will extract main lineage, structures in pdb format and generate summary pl
 ```
 visualames -l outputs/protein_rna_test/progress.log
 ``` 
-Use [AMESViewer](https://github.com/sahakyanhk/ames_viewer) to visualize and analyse the simulation trajectories in [ChimeraX](https://www.cgl.ucsf.edu/chimerax/)
+Use [AMESViewer](https://github.com/sahakyanhk/ames_viewer) to visualize and analyze the simulation trajectories in [ChimeraX](https://www.cgl.ucsf.edu/chimerax/)
 
 
 #
@@ -53,7 +61,7 @@ visualames -l outputs/esmfold_test/progress.log
 
 
 #
-**Running an batch of simulations on HPC** with Slurm
+**Running a batch of simulations on HPC** with Slurm
 ```
 for i in {01..09}; do bash_helpers/run_ames.sbatch outputs/batch1/run$i; done
 ```
@@ -80,7 +88,7 @@ ames --pop_size 50 --num_generations 100 --engine simulacrum -o outputs/simulacr
 
 **sequence setup** \
 `--iseq1` 1st seq info to initiate simulation [protein, rna, dna]:[random, randoms]:[sequence_length]:[evolv, static]. e.g., "protein:random:25:evolv" \
-`--seq1_init` 1st seqence, can be actual sequence, `random` - the same random sequence for entire populations, `randoms` - each sequence in the population is random \
+`--seq1_init` 1st sequence, can be real sequence, `random` - the same random sequence for entire populations, `randoms` - each sequence in the population is random \
 `--seq1_type` 1st seq type [protein, rna, dna] \
 `--seq1_len` if `random`(s) is used, provide random sequence length, ignore if sequence is provided \
 `--seq1_evol` does seq1 evolve [True/False], store_true \
@@ -89,7 +97,7 @@ use the same settings for seq2 with `--iseq2`, `--seq2_init`, `--seq2_type`, `--
 
 **temperature control** \
 `-ann`,`--annealing` Use temperature annealing, see `-b0`, `-bt`, `-ann_s`, `-ann_e`, or `-ann_step` for annealing setup \
-`-b0`, `--beta` Selection strength, the higher beta the lower temperature and stronger selection \
+`-b0`, `--beta` Selection strength, the higher beta the stronger the selection \
 `-bt`, `--beta_target` Target temperature if annealing is used \
 `-ann_s`, `--annealing_start`, Generation when annealing starts \
 `-ann_e`,`--annealing_end`, Generation when annealing reaches target temperature \
@@ -137,4 +145,4 @@ use the same settings for seq2 with `--iseq2`, `--seq2_init`, `--seq2_type`, `--
 `--norepeat` do not generate and/or select the same sequences more than once, off by default \
 `--max_seq_per_batch` max_seq_per_batch, half or population size by default \
 `--config` json file with settings \
-see [simparam.json](https://github.com/sahakyanhk/ames/blob/dev/src/data/simparam.json) for full list of settings and default values. 
+see [simparam.json](https://github.com/sahakyanhk/ames/blob/dev/src/ames/data/simparam.json) for the full list of settings and default values. 
