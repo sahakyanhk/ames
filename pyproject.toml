@@ -1,18 +1,14 @@
 [build-system]
-# Pinned to match the runtime pin below so an isolated build and an
-# in-env (--no-build-isolation) rebuild use the same pybind11 headers.
 requires = ["setuptools", "pybind11==3.0.1"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "ames"
-version = "1.0.0"
+version = "0.1.0"
 requires-python = ">=3.10"
 description = "atomistic molecular evolution simulator"
 readme = "README.md"
 
-# Imported by src/ames.py at module load on every run, regardless of engine.
-# Keep this list engine-agnostic - per-engine stacks go in optional-dependencies.
 dependencies = [
     "numpy>=2.0",
     "pandas>=2.2.2",
@@ -26,5 +22,20 @@ dependencies = [
 
 [project.optional-dependencies]
 esmfold2 = [
-    "esm @ git+https://github.com/Biohub/esm.git@main",
+    "esm>=3.4.1",   # PyPI; provides esm.models.esmfold2
 ]
+
+[project.scripts]
+ames = "ames.ames:main"
+visualames = "ames.visualames:main"
+ames-fold = "ames.fold:main"
+ames-rndgen = "ames.rndgen:main"
+
+[tool.setuptools]
+zip-safe = false
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ames = ["data/*.json", "bin/psique", "pdb_contacts.cpp"]

@@ -406,3 +406,4 @@ pdb_contacts.cpython-*
 *.so
 oolexperiment/
 rfam*/
+*.egg-info/

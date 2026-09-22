@@ -12,7 +12,9 @@ from amestools import sigmoid
 
 from pathlib import Path
 _PKG_ROOT = Path(__file__).resolve().parent.parent   # ames/
-RFAM_DB = _PKG_ROOT / "rfam" / "Rfam.cm"
+# rfam/ is a ~5 GB local database, not shipped with the package - an installed
+# copy has no repo next to it, so point AMES_RFAM_DB at Rfam.cm instead.
+RFAM_DB = Path(os.environ.get("AMES_RFAM_DB", _PKG_ROOT / "rfam" / "Rfam.cm"))
 
 
 def rna_secondary_structure(pdb_text, chain="A"):
