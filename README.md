@@ -5,44 +5,50 @@
 ## Installation
 
 ```
-git clone https://github.com/sahakyanhk/ames.git && cd ames
-pip install numpy pandas pybind11 setuptools matplotlib tqdm zstandard
-pip install . # install pdb_contacts
+pip install "ames[esmfold2] @ git+https://github.com/sahakyanhk/ames"
 ```
-Install [AlphaFold3](https://github.com/google-deepmind/alphafold3/blob/main/docs/installation.md), [OpenFold3](https://github.com/aqlaboratory/openfold-3?tab=readme-ov-file#quick-start-for-inference), or ESMFold via [Transformers](https://github.com/huggingface/transformers?tab=readme-ov-file#installation) 
+this will install ames with ESMfold2,
+for a local checkout run:
+```
+git clone https://github.com/sahakyanhk/ames.git && cd ames
+pip install -e .
+```
+Needs python >= 3.10 and a C++17 compiler.
+
+Install [AlphaFold3](https://github.com/google-deepmind/alphafold3/blob/main/docs/installation.md), [OpenFold3](https://github.com/aqlaboratory/openfold-3?tab=readme-ov-file#quick-start-for-inference), or ESMFold via [Transformers](https://github.com/huggingface/transformers?tab=readme-ov-file#installation) as an alternative engine if needed.
+
 
 ## Quick Start
-**Evolution of a protein interacting with RNA using AlphaFold3**
+**Evolution of a protein interacting with RNA**
 ```
-python src/ames.py --iseq1 'protein:randoms:65:evolv' --seq1_rate 0.5 \
-                    --iseq2 'rna:randoms:24:evolv' --seq2_rate 1 \
-                    -pm npm -rm pmo \
-                    -ps 100 -ng 1000 \
-                    -ann -ann_s 150 -ann_e 999 \
-                    -b0 0.8 -bt 8.0 \
-                    --engine af3 \
-                    -o outputs/protein_rna_test
+ames --iseq1 'protein:randoms:65:evolv' --seq1_rate 0.5 \
+     --iseq2 'rna:randoms:12:evolv' --seq2_rate 1 \
+     -pm npm -rm pmo \
+     -ps 100 -ng 1000 \
+     -ann -ann_s 150 -ann_e 999 \
+     -b0 0.8 -bt 8.0 \
+     -o outputs/protein_rna_test
 ```
 
-Use `src/visualames.py` to process trajectory and run basic analyses.\
+Use `visualames` to process trajectory and run basic analyses.\
 This will extract main lineage, structures in pdb format and generate summary plots
 
 ```
-python src/visualames.py -l outputs/protein_rna_test/progress.log
+visualames -l outputs/protein_rna_test/progress.log
 ``` 
 Use [AMESViewer](https://github.com/sahakyanhk/ames_viewer) to visualize and analyse the simulation trajectories in [ChimeraX](https://www.cgl.ucsf.edu/chimerax/)
 
 
 #
-**Single protein fold evolution simulation ([PFES](https://www.pnas.org/doi/10.1073/pnas.2509015122)) with ESMFold** 
+**Single protein fold evolution simulation with ESMFold as in [PFES](https://www.pnas.org/doi/10.1073/pnas.2509015122) paper** 
 ```
-python src/ames.py --iseq1 'protein:randoms:65:evolv' --seq1_rate 1 \
-                    -pm pmo -ps 100 -ng 1000 \
-                    --engine esmfold \
-                    -o outputs/esmfold_test
+ames --iseq1 'protein:randoms:65:evolv' --seq1_rate 1 \
+     -pm pmo -ps 100 -ng 1000 \
+     --engine esmfold \
+     -o outputs/esmfold_test
 
 
-python src/visualames.py -l outputs/esmfold_test/progress.log
+visualames -l outputs/esmfold_test/progress.log
 ```
 
 
@@ -62,7 +68,7 @@ bash_helpers/summarize_batch.sh outputs/batch1
 #
 **Dry run** for debugging working without structure prediction engine. 
 ```
-python src/ames.py --pop_size 50 --num_generations 100 --engine simulacrum -o outputs/simulacrum_test
+ames --pop_size 50 --num_generations 100 --engine simulacrum -o outputs/simulacrum_test
 ```
 
 
@@ -90,7 +96,7 @@ use the same settings for seq2 with `--iseq2`, `--seq2_init`, `--seq2_type`, `--
 `-ann_step`,`--annealing_step`, Annealing step, calculated automatically if `-ann_s ` and `-ann_e` are provided 
 
 **mutation setup** \
-`-pm`, `-rm`, `-dm` or `--protein_mutations`, `--rna_mutations`, `--dna_mutations` protein, RNA and DNA mutations types \
+`-pm1`, `-rm1`, `-dm1` or `--protein_mutations1`, `--rna_mutations1`, `--dna_mutations1` protein, RNA and DNA mutations types for seq1. Use `-pm2`, `-rm2` ... for seq2\
 &ensp;&ensp;&ensp;&ensp;`npm` substitutions, insertions, deletions, permutations and duplications \
 &ensp;&ensp;&ensp;&ensp;`pmo` substitutions and single residues indels \
 &ensp;&ensp;&ensp;&ensp;`rso` residue substitutions only 
