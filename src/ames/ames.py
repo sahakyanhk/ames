@@ -42,6 +42,11 @@ from amestools import (parse_args,
                       )
 
 
+#sequence/structure template test
+from align.sequence_alignment import sequence_identity as seqid
+from align.structure_alignment import tmalign
+
+
 write_lock = threading.Lock()
 
 MAX_INCOMPLETE_GENERATIONS = 10 # abort after this many generations lost a batch to a dead extract_results() thread
@@ -297,12 +302,17 @@ def extract_results(gen_i: int,
         else: 
             seq2_len_penalty = 1
 
+        #template scoring test
+        if args.structure_template1 and args.sequence_template:
+            try:
+                structure_similarity = tmalign(pdb_txt, args.structure_template1)
+            except:
+                structure_similarity = 1
+            sequence_similarity = seqid(seq_data["seq1"]["sequence"], args.sequence_template)
 
         # imitate simulation without real structure prediction
         if args.engine == "simulacrum" or pdb_txt == "STRUCTURESIMULACRUM":
             score = ((15-seq_data["seq1"]["seqstat"]) / 15) + (random.random() - 0.5) # add some noise to the score
-
-            score = score * seq1_len_penalty * seq2_len_penalty
             
             row_data = {
                         'gndx': gen_i,
@@ -451,6 +461,10 @@ def extract_results(gen_i: int,
                               ligand_contact_density,
                               penalty
                               ) + (0.5 * rfam_score)
+
+        #template scoring test
+        score = score * sequence_similarity * (1 - structure_similarity)
+
 
         row_data = {
             'gndx': gen_i,

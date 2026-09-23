@@ -1,5 +1,33 @@
 import os
+from dataclasses import dataclass
+
 import numpy as np
+
+
+THREE2ONE = {
+    "ALA": "A", "ARG": "R", "ASN": "N", "ASP": "D", "CYS": "C",
+    "GLN": "Q", "GLU": "E", "GLY": "G", "HIS": "H", "ILE": "I",
+    "LEU": "L", "LYS": "K", "MET": "M", "PHE": "F", "PRO": "P",
+    "SER": "S", "THR": "T", "TRP": "W", "TYR": "Y", "VAL": "V",
+    # Standard PDB codes for ambiguous and genetically encoded residues.
+    "ASX": "B", "GLX": "Z", "SEC": "U", "PYL": "O", "XLE": "J",
+    "UNK": "X",
+    # Nucleic-acid residue names commonly found in PDB files.
+    "A": "A", "C": "C", "G": "G", "T": "T", "U": "U",
+    "DA": "A", "DC": "C", "DG": "G", "DT": "T", "DU": "U",
+}
+
+
+@dataclass
+class PDBData:
+    """Atom-level PDB data and residue sequences grouped by chain."""
+
+    atom_type: np.ndarray
+    resname: np.ndarray
+    chain: np.ndarray
+    resid: np.ndarray
+    coords: np.ndarray
+    sequence: list[str]
 
 
 def cif2pdb(cif_text):
@@ -221,8 +249,6 @@ def extract_backbone(pdb_txt: str):
                              "PHE", "TYR", "TRP", "HIS", "LYS", 
                              "ARG", "ASP", "GLU", "ASN", "GLN"
                               ):
-                
-                
 
                 if atom_type in ('N', 'CA', 'C', 'O'):
     
@@ -232,34 +258,86 @@ def extract_backbone(pdb_txt: str):
     
     return "\n".join(pdb_traj)
 
-def parsepdb(pdb, ca_only=False):
-    
-    """conver sequence from pdb file the pdb_txt"""
 
-    if os.path.exists(pdb):
-        with open(pdb, 'r') as f:
-            pdb_txt = f.read()
+def parsepdb(pdb: str | os.PathLike, ca_only: bool = False) -> PDBData:
+    """Parse ATOM records from PDB text or a PDB file.
+
+    Returns
+    -------
+    PDBData
+        Atom-level NumPy arrays plus ``sequence``, a list containing one
+        sequence per chain in chain encounter order. Each residue occurs once
+        and unknown residue names are represented by ``X``.
+    """
+    if isinstance(pdb, os.PathLike):
+        with open(pdb, "r", encoding="utf-8") as handle:
+            pdb_txt = handle.read()
+    elif isinstance(pdb, str):
+        # Avoid treating a large, multiline PDB document as a file name.
+        try:
+            is_file = "\n" not in pdb and "\r" not in pdb and os.path.isfile(pdb)
+        except OSError:
+            is_file = False
+
+        if is_file:
+            with open(pdb, "r", encoding="utf-8") as handle:
+                pdb_txt = handle.read()
+        else:
+            pdb_txt = pdb
     else:
-        pdb_txt = pdb
-        
-    atom_type = np.array([])
-    resname = np.array([])  
-    chain = np.array([])
-    resid = np.array([])
-    coords = np.empty((0, 3), float)
+        raise TypeError("pdb must be PDB text or a path-like object")
 
+    atom_types = []
+    residue_names = []
+    chains = []
+    residue_ids = []
+    coordinates = []
+    sequences = {}
+    seen_residues = set()
 
-    for line in pdb_txt.splitlines():
-        if line.startswith("ATOM"):
-            if ca_only and line[12:16].strip() != "CA":
-                continue
-            atom_type = np.append(atom_type, line[11:16].strip())
-            resname = np.append(resname, line[17:20].strip())
-            chain = np.append(chain, line[20:22].strip())
-            resid = np.append(resid, line[22:26].strip())
-            coords = np.append(coords, [[float(line[30:38]), float(line[38:46]), float(line[46:54])]], axis=0)
+    for line_number, line in enumerate(pdb_txt.splitlines(), start=1):
+        if line[0:6].strip() != "ATOM":
+            continue
 
-    return atom_type, resname, chain, resid, coords 
+        atom_name = line[12:16].strip()
+        if ca_only and atom_name != "CA":
+            continue
 
+        residue_name = line[17:20].strip().upper()
+        chain_id = line[21:22].strip()
+        # Include the insertion code so, for example, residues 10 and 10A do
+        # not collapse to the same identifier.
+        residue_id = f"{line[22:26].strip()}{line[26:27].strip()}"
 
-    
+        try:
+            xyz = (
+                float(line[30:38]),
+                float(line[38:46]),
+                float(line[46:54]),
+            )
+        except ValueError as exc:
+            raise ValueError(
+                f"invalid coordinates in PDB ATOM record on line {line_number}"
+            ) from exc
+
+        atom_types.append(atom_name)
+        residue_names.append(residue_name)
+        chains.append(chain_id)
+        residue_ids.append(residue_id)
+        coordinates.append(xyz)
+
+        residue_key = (chain_id, residue_id)
+        if residue_key not in seen_residues:
+            seen_residues.add(residue_key)
+            residue_code = THREE2ONE.get(residue_name, "X")
+            sequences[chain_id] = sequences.get(chain_id, "") + residue_code
+
+    coords = np.asarray(coordinates, dtype=float).reshape((-1, 3))
+    return PDBData(
+        atom_type=np.asarray(atom_types, dtype=str),
+        resname=np.asarray(residue_names, dtype=str),
+        chain=np.asarray(chains, dtype=str),
+        resid=np.asarray(residue_ids, dtype=str),
+        coords=coords,
+        sequence=list(sequences.values()),
+    )

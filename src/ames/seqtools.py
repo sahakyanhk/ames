@@ -10,6 +10,32 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+
+def fasta2dict(fasta_path: str) -> dict:
+
+    seq_dict = {}
+    writedata = False
+    seq = ""
+    seq_id = None
+
+    with open(fasta_path) as fh:
+        for oline in fh:
+            if oline.startswith(">"):
+                if writedata and seq_id is not None:
+                    seq_dict[seq_id] = seq.upper()
+                    seq = ""
+                sline1 = oline.split()
+                seq_id = sline1[0].lstrip(">")
+                writedata = True
+            else:
+                seq += oline.strip()
+
+    if seq_id is not None:
+        seq_dict[seq_id] = seq.upper()
+
+    return seq_dict
+
+
 class Seqstat:
 
     def __init__(self, stat_from = None, seqtype = 'protein'):
@@ -65,31 +91,6 @@ class Seqstat:
         """Generate all possible k-mers for the sequence type."""
         alphabet = self.get_alphabet()
         return [''.join(p) for p in product(alphabet, repeat=k)]
-
-    @staticmethod
-    def read_fasta_to_dict(fasta_path: str) -> dict:
-            
-            seq_dict = {}
-            writedata = False
-            seq = ""
-            seq_id = None
-
-            with open(fasta_path) as fh:
-                for oline in fh:
-                    if oline.startswith(">"):
-                        if writedata and seq_id is not None:
-                            seq_dict[seq_id] = seq.upper()
-                            seq = ""
-                        sline1 = oline.split()
-                        seq_id = sline1[0].lstrip(">")
-                        writedata = True
-                    else:
-                        seq += oline.strip()
-
-            if seq_id is not None:
-                seq_dict[seq_id] = seq.upper()
-
-            return seq_dict
 
 
     def read_fasta_generator(self, fasta_path: str):

@@ -57,5 +57,9 @@
     "rfam_scoring": false,
     "engine": "esmfold2",
     "norepeat": false,
-    "max_seq_per_batch": null
+    "max_seq_per_batch": null,
+    "structure_template1": null,
+    "structure_template2": null,
+    "sequence_template1": null,
+    "sequence_template2": null
 }
