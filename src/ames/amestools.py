@@ -289,17 +289,16 @@ def parse_args() -> argparse.Namespace:
     #prepare templates
     if args.structure_template1:
         if os.path.isfile(args.structure_template1):
-            with open(args.structure_template1, 'r') as f:
-                args.structure_template1 = f.read().strip()
+            args.structure_template1 = Path(args.structure_template1).resolve()
         else:
             raise FileNotFoundError(f"Structure template 1 file not found: {args.structure_template1}")
 
-    if args.structure_template2:
-        if os.path.isfile(args.structure_template2):
-            with open(args.structure_template2, 'r') as f:
-                args.structure_template2 = f.read().strip()
-        else:
-            raise FileNotFoundError(f"Structure template 2 file not found: {args.structure_template2}")
+    # if args.structure_template2:
+    #     if os.path.isfile(args.structure_template2):
+    #         with open(args.structure_template2, 'r') as f:
+    #             args.structure_template2 = f.read().strip()
+    #     else:
+    #         raise FileNotFoundError(f"Structure template 2 file not found: {args.structure_template2}")
 
     if args.sequence_template:
         if os.path.isfile(args.sequence_template):
@@ -545,6 +544,8 @@ def create_init_gen(evolver1, evolver2, args) -> pd.DataFrame:
                                      "n_clashes",
                                      "clashscore",
                                      "penalty",
+                                     "seqid",
+                                     "tmscore",
                                      "score", 
                                      "rfam_score",
                                      "rfam_hit",
@@ -660,6 +661,8 @@ def create_init_gen(evolver1, evolver2, args) -> pd.DataFrame:
     init_gen["n_clashes"] = 0
     init_gen["clashscore"] = 0.0
     init_gen["penalty"] = 0.0
+    init_gen["seqid"] = 0.0
+    init_gen["tmscore"] = 0.0
     init_gen["score"] = 0.001 
     init_gen["rfam_score"] = 0.0
     init_gen["rfam_hit"] = '-'

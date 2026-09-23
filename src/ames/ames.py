@@ -302,13 +302,6 @@ def extract_results(gen_i: int,
         else: 
             seq2_len_penalty = 1
 
-        #template scoring test
-        if args.structure_template1 and args.sequence_template:
-            try:
-                structure_similarity = tmalign(pdb_txt, args.structure_template1)
-            except:
-                structure_similarity = 1
-            sequence_similarity = seqid(seq_data["seq1"]["sequence"], args.sequence_template)
 
         # imitate simulation without real structure prediction
         if args.engine == "simulacrum" or pdb_txt == "STRUCTURESIMULACRUM":
@@ -329,6 +322,8 @@ def extract_results(gen_i: int,
                         'n_clashes': 0,
                         'clashscore': 0.0,
                         'penalty': 0.0,
+                        'seqid': 0.0,
+                        'tmscore': 0.0,
                         'score': score,
                         'rfam_score': 0.0,
                         'rfam_hit': '-',
@@ -462,8 +457,22 @@ def extract_results(gen_i: int,
                               penalty
                               ) + (0.5 * rfam_score)
 
-        #template scoring test
-        score = score * sequence_similarity * (1 - structure_similarity)
+        #TEMPLATE SCORING TEST
+        if args.structure_template1 and args.sequence_template:
+            try:
+                structure_similarity = tmalign(pdb_txt, args.structure_template1).tmscore
+            except Exception as e:
+                structure_similarity = 1
+                print(f"tmalign failed: {e}")
+                print(args.structure_template1)
+            sequence_identity = seqid(seq_data["seq1"]["sequence"], args.sequence_template)
+        else: 
+            structure_similarity = 0.0
+            sequence_identity = 0.0
+
+
+        if args.structure_template1 and args.sequence_template:
+            score = score + sequence_identity + 0.5*(1 - structure_similarity)
 
 
         row_data = {
@@ -481,6 +490,8 @@ def extract_results(gen_i: int,
             "n_clashes": num_clashes,
             "clashscore": clashscore,
             "penalty": penalty,
+            "seqid": sequence_identity,
+            "tmscore": structure_similarity,
             'score': score,
             "rfam_score": rfam_score, 
             "rfam_hit": rfam_hit,
