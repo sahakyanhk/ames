@@ -269,7 +269,6 @@ def extract_results(gen_i: int,
 
     for meta_id, seq_data, pdb_txt, ptm, plddt, iptm in \
         zip(headers, sequence_data_batch, structures, ptms, plddts, iptms):
-        
         uid_data = meta_id.split('_')
 
         uid = uid_data[0]
@@ -457,7 +456,7 @@ def extract_results(gen_i: int,
                               penalty
                               ) + (0.5 * rfam_score)
 
-        #TEMPLATE SCORING TEST
+        #TEMPLATE SCORING TEST ========================================================
         if args.structure_template1 and args.sequence_template:
             try:
                 structure_similarity = tmalign(pdb_txt, args.structure_template1).tmscore
@@ -466,13 +465,12 @@ def extract_results(gen_i: int,
                 print(f"tmalign failed: {e}")
                 print(args.structure_template1)
             sequence_identity = seqid(seq_data["seq1"]["sequence"], args.sequence_template)
+            score = ptm + 2*sequence_identity + (1 - structure_similarity)
         else: 
             structure_similarity = 0.0
             sequence_identity = 0.0
-
-
-        if args.structure_template1 and args.sequence_template:
-            score = score + sequence_identity + 0.5*(1 - structure_similarity)
+        
+        #TEMPLATE SCORING TEST ========================================================
 
 
         row_data = {
