@@ -91,7 +91,8 @@ def esm2data(esm_out):
     mask = output["atom37_atom_exists"][:,:,1] == 1 
     seq_len = np.sum(mask.numpy(), 1) 
     num_seq = len(seq_len)
-    pmts = [compute_tm(output["distogram_logits"][i]).item() for i in range(num_seq)]
+    pmts = [compute_tm(output["ptm_logits"][i], residue_weights=mask[i].float(),).item() 
+        for i in range(num_seq)]
     plddt =  [output["plddt"][:,:,1][i][mask[i]]/100 for i in range(num_seq)] 
     mean_plddt = [plddt[i].mean().item() for i in range(len(seq_len))]
     return(pdbs, pmts, mean_plddt) 
