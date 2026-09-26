@@ -449,9 +449,28 @@ def build_sequence_lookup(gen_df: pd.DataFrame) -> dict[str, dict]:
         sequence_lookup[sequence_signature(row["sequence_data"])] = row
     return sequence_lookup
 
-def calculate_homogeneity(gen_df: pd.DataFrame) -> pd.Series:
-        uniseqs = gen_df['sequence_data'].map(lambda d: d["seq1"]["sequence"] + "|" + d.get("seq2", {}).get("sequence", ""))
-        return round(1 - (uniseqs.nunique() / len(gen_df)), 3)
+def calculate_homogeneity(gen_df: pd.DataFrame) -> float:
+
+    N = len(gen_df)
+
+    def extract_seq(d):
+        if not isinstance(d, dict):
+            return ""
+        s1 = d.get("seq1", {}).get("sequence", "") if isinstance(d.get("seq1"), dict) else ""
+        s2 = d.get("seq2", {}).get("sequence", "") if isinstance(d.get("seq2"), dict) else ""
+        return f"{s1}|{s2}"
+
+    # Extract sequences and count frequencies (n_i)
+    uniseqs = gen_df['sequence_data'].map(extract_seq)
+    sequence_counts = uniseqs.value_counts()
+    
+    # Calculate sum of n*(n-1)
+    sum_n_minus_1 = sum(n * (n - 1) for n in sequence_counts)
+    
+    # Calculate final Homogeneity Index (Simpson's Dominance)
+    homogeneity = sum_n_minus_1 / (N * (N - 1))
+    
+    return round(homogeneity, 3)
 
 
 def backup_output(directory_path, backup_suffix=None, max_backups=None) -> T.Optional[str]:

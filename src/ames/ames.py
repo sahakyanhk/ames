@@ -429,7 +429,7 @@ def extract_results(gen_i: int,
                 iplddt = (iplddt + ligand_iplddt) / 2
             else:
                 iplddt = ligand_iplddt
-        
+
         else:
             ligand_contact_density = 0.0
 
@@ -465,7 +465,12 @@ def extract_results(gen_i: int,
                 print(f"tmalign failed: {e}")
                 print(args.structure_template1)
             sequence_identity = seqid(seq_data["seq1"]["sequence"], args.sequence_template)
-            score = ptm + 2*sequence_identity + (1 - structure_similarity)
+
+            sequence_identity = sequence_identity if sequence_identity >= 0.6 else 0.0
+            structure_similarity = 0.0 if structure_similarity <= 0.35 else structure_similarity 
+
+            score = 0.5*plddt + ptm + 2*sequence_identity + (1 - structure_similarity)
+
         else: 
             structure_similarity = 0.0
             sequence_identity = 0.0
