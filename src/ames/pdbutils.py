@@ -194,7 +194,7 @@ def cif2pdb(cif_text):
                 f"{occupancy:>6.2f}"            # 55-60: Occupancy
                 f"{temp_factor:>6.2f}"          # 61-66: Temperature factor
                 f"          "                    # 67-76: spaces (segment ID, etc.)
-                f"{element:>2s}"                # 77-78: Element symbol
+                f"{element:>2s}  "                # 77-78: Element symbol
             )
             pdb_lines.append(pdb_line)
             
