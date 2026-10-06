@@ -103,16 +103,10 @@ use the same settings for seq2 with `--iseq2`, `--seq2_init`, `--seq2_type`, `--
 `-ann_step`,`--annealing_step`, Annealing step, calculated automatically if `-ann_s ` and `-ann_e` are provided 
 
 **mutation setup** \
-`-pm1`, `-rm1`, `-dm1` or `--protein_mutations1`, `--rna_mutations1`, `--dna_mutations1` protein, RNA and DNA mutations types for seq1. Use `-pm2`, `-rm2` ... for seq2\
-&ensp;&ensp;&ensp;&ensp;`npm` substitutions, insertions, deletions, permutations and duplications \
-&ensp;&ensp;&ensp;&ensp;`pmo` substitutions and single residues indels \
-&ensp;&ensp;&ensp;&ensp;`rso` residue substitutions only 
-
-  `-pa`, `--protein_alphabet`  amino acid mutation probabilities `[uniform, uniprot, codonrates]`, uniform by default \
-  `-ra`, `--rna_alphabet` nucleotide mutation probabilities \
-  `-da`, `--dna_alphabet` nucleotide mutation probabilities 
-
-
+`-a1`, `--seq1_alphabet` 1st sequence alphabet [protein, protein_codonrates, protein_uniprot, rna, dna] \
+`-m1`, `--seq1_mutations` 1st sequence mutations [npm, pmo, rso, rnd] \
+`-a2`, `--seq2_alphabet` 2st sequence alphabet [protein, protein_codonrates, protein_uniprot, rna, dna] \
+`-m2`, `--seq2_mutations` 2st sequence mutations [npm, pmo, rso, rnd] \
 
 **ligand setup** \
 `--ligand` ligand(s) provided in ccd or smiles format separated with commas e.g., "--ligand ATP,MG" \
