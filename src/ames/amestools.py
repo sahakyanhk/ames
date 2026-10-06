@@ -40,21 +40,13 @@ def parse_args() -> argparse.Namespace:
 
     #selection mode and simulations parameters
     parser.add_argument('--config', type=str, default=str(DATA_DIR / 'simparam.json'), help='default configs')
+    parser.add_argument('-ed', '--evoldict', type=str, help='alphabets and mutations')
     parser.add_argument('-sm', '--selection_mode', type=str, help='selection mode\n options: strong, weak, weak2')
-    parser.add_argument('-ed', '--evoldict', type=str, help='simulation parameters')
 
-    parser.add_argument('-pa1', '--protein_alphabet1', type=str, help='protein_alphabet [uniform, uniprot, codonrates]')
-    parser.add_argument('-ra1', '--rna_alphabet1', type=str, help='rna_alphabet')
-    parser.add_argument('-da1', '--dna_alphabet1', type=str, help='dna_alphabet')
-    parser.add_argument('-pm1', '--protein_mutations1', type=str, help='protein_mutations [npm, pmo, rso]')
-    parser.add_argument('-rm1', '--rna_mutations1', type=str, help='rna_mutations [npm, pmo, rso]')
-    parser.add_argument('-dm1', '--dna_mutations1', type=str, help='dna_mutations [npm, pmo, rso]')
-    parser.add_argument('-pa2', '--protein_alphabet2', type=str, help='protein_alphabet [uniform, uniprot, codonrates]')
-    parser.add_argument('-ra2', '--rna_alphabet2', type=str, help='rna_alphabet')
-    parser.add_argument('-da2', '--dna_alphabet2', type=str, help='dna_alphabet')
-    parser.add_argument('-pm2', '--protein_mutations2', type=str, help='protein_mutations [npm, pmo, rso]')
-    parser.add_argument('-rm2', '--rna_mutations2', type=str, help='rna_mutations [npm, pmo, rso]')
-    parser.add_argument('-dm2', '--dna_mutations2', type=str, help='dna_mutations [npm, pmo, rso]')
+    parser.add_argument('-a1', '--seq1_alphabet', type=str, help='protein_alphabet [uniform, uniprot, codonrates]')
+    parser.add_argument('-m1', '--seq1_mutations', type=str, help='protein_mutations [npm, pmo, rso]')
+    parser.add_argument('-a2', '--seq2_alphabet', type=str, help='protein_alphabet [uniform, uniprot, codonrates]')
+    parser.add_argument('-m2', '--seq2_mutations', type=str, help='protein_mutations [npm, pmo, rso]')
 
     #pop_size and num generations
     parser.add_argument('-ng', '--num_generations', type=int, help='number of generations')
@@ -574,7 +566,7 @@ def create_init_gen(evolver1, evolver2, args) -> pd.DataFrame:
                                      "structure"])
 
     if args.seq1_init == 'random':
-        randomsequence1 = evolver1.randomseq(args.seq1_type, args.seq1_len)
+        randomsequence1 = evolver1.randomseq(args.seq1_len)
         seq_data = [{
             "seq1": {
                 "type": args.seq1_type, 
@@ -595,7 +587,7 @@ def create_init_gen(evolver1, evolver2, args) -> pd.DataFrame:
         init_gen['id'] = [f'initseq{i}' for i in range(args.pop_size)]
         seq_data = []
         for _ in range(args.pop_size):
-            randomsequence1 = evolver1.randomseq(args.seq1_type, args.seq1_len)
+            randomsequence1 = evolver1.randomseq(args.seq1_len)
             seq_data.append(
                 {"seq1": 
                     {

@@ -42,9 +42,9 @@ summary_summary="summary/summary_general"
 summary_lineage_summary="summary/summary_lineage"
 summarytsv="summary/summary_final.tsv"
 batch_summary_lineage="summary/summary_batch_lineage"
-batch_summary_bestlog="summary/summary_batch_bestlog"
 
-mkdir -p "$summary_pdb" "$summary_seq" "$summary_log" "$summary_summary" "$summary_lineage_summary" "$batch_summary_lineage" "$batch_summary_bestlog"
+
+mkdir -p "$summary_pdb" "$summary_seq" "$summary_log" "$summary_summary" "$summary_lineage_summary" "$batch_summary_lineage" 
 
 for run in run*/; do 
     base=${run::-1}
@@ -142,7 +142,8 @@ params = ['plddt', 'ptm', 'iplddt', 'iptm', 'score', 'evolrate',
           'seq1_len', 'seq2_len', 'clashscore', 'num_clashes', 'rfam_score', 'beta']
 
 for label, outdir, suffix in [("lineage", "$batch_summary_lineage", "_lineage.tsv"),
-                              ("bestlog", "$batch_summary_bestlog", "_bestlog.tsv")]:
+                              #("bestlog", "$batch_summary_bestlog", "_bestlog.tsv")
+			      ]:
     for param in params:
         print(f"generating {label} summary plot for {param}...", end='\x1b[1K\r')
         summary_plot_with_violin("$summary_log", outdir, suffix=suffix, param=param)

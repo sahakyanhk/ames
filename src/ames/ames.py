@@ -111,14 +111,14 @@ def fold_evolution_simulator() -> None:
 
             #  mutate each sequence separately
             if mutate_seq1:
-                seq1, mutation_data1 = evolver1.mutate(args.seq1_type, sequence_data['seq1']['sequence'])
+                seq1, mutation_data1 = evolver1.mutate(sequence_data['seq1']['sequence'])
                 seq_data["seq1"]["sequence"] = seq1 
                 seq_data["seq1"]["len"] = len(seq1) 
             else: 
                 mutation_data1 = "none"
                 
             if args.seq2_evol and mutate_seq2:            
-                seq2, mutation_data2 = evolver2.mutate(args.seq2_type, sequence_data['seq2']['sequence'])
+                seq2, mutation_data2 = evolver2.mutate(sequence_data['seq2']['sequence'])
                 seq_data["seq2"]["sequence"] = seq2
                 seq_data["seq2"]["len"] = len(seq2) 
             else: 
@@ -456,26 +456,26 @@ def extract_results(gen_i: int,
                               penalty
                               ) + (0.5 * rfam_score)
 
-        #TEMPLATE SCORING TEST ========================================================
+        #>>>>>>>>>>>>>>>>>>>>>>>>>> TEMPLATE SCORING TEST >>>>>>>>>>>>>>>>>>>>>>>>>> 
         if args.structure_template1 and args.sequence_template:
             try:
-                structure_similarity = tmalign(pdb_txt, args.structure_template1).tmscore
+                tmscore = tmalign(pdb_txt, args.structure_template1).tmscore
             except Exception as e:
-                structure_similarity = 1
+                tmscore = 1
                 print(f"tmalign failed: {e}")
                 print(args.structure_template1)
             sequence_identity = seqid(seq_data["seq1"]["sequence"], args.sequence_template)
 
-            sequence_identity = sequence_identity if sequence_identity >= 0.6 else 0.0
-            structure_similarity = 0.0 if structure_similarity <= 0.35 else structure_similarity 
-
-            score = 0.5*plddt + ptm + 2*sequence_identity + (1 - structure_similarity)
+            tmscore = 0.35 if tmscore <= 0.35 else tmscore 
+            # sequence_identity = sequence_identity if sequence_identity >= 0.5 else 0.0
+            # ptm = 0 if ptm <= 0.35 else ptm
+            score = 0.5*plddt + ptm + 2*sequence_identity + (1 - tmscore)
 
         else: 
-            structure_similarity = 0.0
+            tmscore = 0.0
             sequence_identity = 0.0
         
-        #TEMPLATE SCORING TEST ========================================================
+        #<<<<<<<<<<<<<<<<<<<<<<<<<< TEMPLATE SCORING TEST <<<<<<<<<<<<<<<<<<<<<<<<<<<
 
 
         row_data = {
@@ -494,7 +494,7 @@ def extract_results(gen_i: int,
             "clashscore": clashscore,
             "penalty": penalty,
             "seqid": sequence_identity,
-            "tmscore": structure_similarity,
+            "tmscore": tmscore,
             'score': score,
             "rfam_score": rfam_score, 
             "rfam_hit": rfam_hit,
@@ -525,28 +525,19 @@ def extract_results(gen_i: int,
 
 args = parse_args()
 
-#preflight, a missing cmscan/Rfam db would otherwise only show up as a dead extract_results() thread
 if args.rfam_scoring:
     if shutil.which("cmscan") is None:
         raise FileNotFoundError("--rfam_scoring needs cmscan, install infernal in the active environment")
     if not RFAM_DB.exists():
         raise FileNotFoundError(f"--rfam_scoring needs an Rfam database, {RFAM_DB} not found")
 
-evolver1 = Evolver(protein_alphabet = args.protein_alphabet1,
-                  rna_alphabet = args.rna_alphabet1,
-                  dna_alphabet = args.dna_alphabet1,
-                  protein_mutations = args.protein_mutations1,
-                  rna_mutations = args.rna_mutations1,
-                  dna_mutations = args.dna_mutations1
-                  ) 
+evolver1 = Evolver(alphabet = args.seq1_alphabet,
+                  mutations = args.seq1_mutations)
+
 if args.seq2:
-    evolver2 = Evolver(protein_alphabet = args.protein_alphabet2,
-                  rna_alphabet = args.rna_alphabet2,
-                  dna_alphabet = args.dna_alphabet2,
-                  protein_mutations = args.protein_mutations2,
-                  rna_mutations = args.rna_mutations2,
-                  dna_mutations = args.dna_mutations2
-                  ) 
+    evolver1 = Evolver(alphabet = args.seq1_alphabet,
+                        mutations = args.seq1_mutations) 
+
 else:
     evolver2 = None
 

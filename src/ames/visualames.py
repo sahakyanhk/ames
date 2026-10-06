@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 
 import argparse
+import warnings
 import os, re, sys
 import pandas as pd
 import numpy as np
 import json
 import ast
+import warnings
 from pathlib import Path
 from tqdm import tqdm
 import matplotlib.pyplot as plt
@@ -19,6 +21,14 @@ if _src_dir not in sys.path:
 from amestools import read_header, decompress_str
 from pdbutils import extract_backbone
 from seqtools import Seqstat
+
+
+def select_cols(df, cols, name="dataframe"):
+    """Return df[cols], skipping (with a warning) any columns that are missing."""
+    missing = [c for c in cols if c not in df.columns]
+    if missing:
+        warnings.warn(f"{name}: missing columns skipped: {missing}")
+    return df[[c for c in cols if c in df.columns]]
 
 
 parser = argparse.ArgumentParser(description="Analyse PFES")
@@ -92,11 +102,11 @@ def extract_lineage(log) -> pd.DataFrame:
     lineage_cols = ["gndx", "lndx", "id", "mutation", "beta", "evolrate",
                     "plddt", "ptm", "iplddt", "iptm", "cd", "lcd",
                     "n_atoms", "n_clashes", "clashscore", "rfam_score", "rfam_hit", "score", 
-                    "seq1", "seq1_ss", "seq1_len", "seq1_stat"]
+                    "seqid", "tmscore", "seq1", "seq1_ss", "seq1_len", "seq1_stat"]
     if simparam["seq2"]:
         lineage_cols += ["seq2", "seq2_ss", "seq2_len", "seq2_stat"]
     lineage_cols += ["structure"]
-    return lineage[lineage_cols]
+    return select_cols(lineage, lineage_cols, "lineage")
 
 
 def extract_sequences(log):
@@ -142,6 +152,8 @@ labels = {
     "lcd": "Ligand Contact Density",
     "beta": "Selection strength",
     "penalty": "Penalty",
+    "seqid": "Sequence identity", 
+    "tmscore": "TM-score",
     "seq1_len": "Seq1 len",
     "seq2_len": "Seq2 len",
     "seq1_stat": "Seq1 ngram loss",
@@ -153,29 +165,56 @@ labels = {
     "rfam_hit": "RFAM",
         }
 
+ylim = {
+    "gndx": [0,None],              
+    "lndx": [0,None],              
+    "evolrate": [0,1],          
+    "score": [0,None],             
+    "ptm": [0,1],        
+    "plddt": [0,1],             
+    "iptm": [0,1],              
+    "iplddt": [0,1],            
+    "cd": [0,None],     
+    "lcd": [0,None],     
+    "beta": [0,None],              
+    "penalty": [0,1],           
+    "seqid": [0,1],             
+    "tmscore": [0,1],           
+    "seq1_len": [0,None],          
+    "seq2_len": [0,None],          
+    "seq1_stat": [0,None],         
+    "seq2_stat": [0,None],         
+    "n_atoms": [0,None],           
+    "n_clashes": [0,None],         
+    "clashscore": [0,None],        
+    "rfam_score": [0,1],        
+    "rfam_hit": [0,None],          
+        }
+
 
 def make_plots(log, bestlog, lineage):
 
     ms=0.1
     lw=1.4
-    dpi=500
+    dpi=300
 
     os.makedirs(plotdir, exist_ok=True)
     for colname in log.keys(): 
         if colname in ['beta', 'plddt', 'ptm', 'iplddt', 'iptm', 
                        'cd', 'lcd', 'score', 'evolrate', 
                        'n_atoms', 'n_clashes', 'clashscore', 
-                       'rfam_score', "rfam_hit",
+                       'seqid', 'tmscore',
                        'seq1_len', 'seq1_stat',
                        'seq2_len', 'seq2_stat']:
                 
-                fig, ax1 = plt.subplots(figsize=(9, 3))
+                fig, ax1 = plt.subplots(figsize=(7, 3))
                 ax1.plot(log[colname],'.', markersize=ms,    color='silver', label='all mutations')
                 ax1.plot(bestlog[colname],'-', linewidth=lw, label='best of the generation')
                 ax1.plot(lineage[colname],'-', linewidth=lw, color='mediumslateblue', label=f'lineage (L={len(lineage[colname])})')
                 ax1.legend(loc ="lower right")
                 ax1.grid(True, which="both",linestyle='--', linewidth=0.3)
-                ax1.set(xlabel="Total number of mutations", ylabel=colname.capitalize())
+                ax1.set(xlabel="Total number of mutations", ylabel=labels[colname])
+                ax1.set_ylim(ylim[colname])
                 #ax2 = ax1.twiny()
                 #ax2.plot(lineage[colname].tolist(),'-', linewidth=lw, color='mediumslateblue')
                 #ax2.set(xlabel="Lineage lenght")
@@ -360,12 +399,12 @@ if args.reseqstat:
 bestlog = log.groupby('gndx').head(1)
 bestlog_cols = ["gndx", "id", "prev_id", "mutation", "beta", 
                     "plddt", "ptm", "iplddt", "iptm", "cd", "lcd", 
-                    "n_atoms", "n_clashes", "clashscore", "score", 
+                    "n_atoms", "n_clashes", "clashscore", "seqid", "tmscore", "score", 
                     "seq1", "seq1_ss", "seq1_len", "seq1_stat"]
 if simparam["seq2"]:
     bestlog_cols += ["seq2", "seq2_ss", "seq2_len", "seq2_stat"]
 bestlog_cols += ["structure"]
-bestlog = bestlog[bestlog_cols]
+bestlog = select_cols(bestlog, bestlog_cols, "bestlog")
 bestlog.to_csv(os.path.join(outdir, 'bestlog.tsv'), sep='\t', index=False, header=True)
 
 
@@ -384,8 +423,8 @@ if args.noplots:
     make_summary_plot(log, bestlog, lineage, simparam)
     make_lineage_summary(lineage, simparam)
 
-    # print("#============ preparing other plots =============#", end="\r")
-    # make_plots(log, bestlog, lineage)
+    print("#============ preparing other plots =============#", end="\r")
+    make_plots(log, bestlog, lineage)
 
 
 if not args.nostr:
