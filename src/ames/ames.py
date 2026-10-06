@@ -18,14 +18,15 @@ if _src_dir not in sys.path:
     sys.path.insert(0, _src_dir)
 
 #AMES modules
+import pdb_contacts as pc
 from evolution import Evolver
 from seqtools import Seqstat
-import pdb_contacts as pc
 from psique import pypsique
 from rnatools import rna_ss_penalty, rna_secondary_structure, rna_seq_search, RFAM_DB
 
-from amestools import (parse_args,
-                       generate_loghead,
+from arguments import parse_args
+
+from amestools import (generate_loghead,
                        save_checkpoint,
                        sequence_signature,
                        build_sequence_lookup,
@@ -136,14 +137,14 @@ def fold_evolution_simulator() -> None:
             if args.norepeat and repeat_row is not None:
                 while repeat_row is not None:
                     if mutate_seq1:
-                        seq1, mutation_data1 = evolver1.mutate(args.seq1_type, sequence_data['seq1']['sequence'])
+                        seq1, mutation_data1 = evolver1.mutate(sequence_data['seq1']['sequence'])
                         seq_data["seq1"]["sequence"] = seq1
                         seq_data["seq1"]["len"] = len(seq1)
                     else:
                         mutation_data1 = "none"
 
                     if args.seq2_evol and mutate_seq2:
-                        seq2, mutation_data2 = evolver2.mutate(args.seq2_type, sequence_data['seq2']['sequence'])
+                        seq2, mutation_data2 = evolver2.mutate(sequence_data['seq2']['sequence'])
                         seq_data["seq2"]["sequence"] = seq2
                         seq_data["seq2"]["len"] = len(seq2)
                     else:
@@ -532,11 +533,13 @@ if args.rfam_scoring:
         raise FileNotFoundError(f"--rfam_scoring needs an Rfam database, {RFAM_DB} not found")
 
 evolver1 = Evolver(alphabet = args.seq1_alphabet,
-                  mutations = args.seq1_mutations)
+                  mutations = args.seq1_mutations,
+                  evoldict = args.evoldict)
 
 if args.seq2:
-    evolver1 = Evolver(alphabet = args.seq1_alphabet,
-                        mutations = args.seq1_mutations) 
+    evolver2 = Evolver(alphabet = args.seq2_alphabet,
+                        mutations = args.seq2_mutations,
+                        evoldict = args.evoldict) 
 
 else:
     evolver2 = None

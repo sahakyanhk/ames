@@ -3,7 +3,8 @@ import numpy as np
 import pandas as pd
 import typing as T 
 import json
-
+import os
+import copy
 
 class Evolver:
 
@@ -36,59 +37,53 @@ class Evolver:
                     }
                 }
 
-    def __init__(self, 
-                 alphabet = "protein",
-                 mutations = "npm",
-                 evoldict = None,
-                 ):
+    def __init__(self, alphabet="protein", mutations="rso", evoldict=None):
+    
+        if isinstance(evoldict, str):
+            if not (evoldict.endswith('.json') and os.path.isfile(evoldict)):
+                raise FileNotFoundError(f"evoldict {evoldict!r} is not an existing .json file")
+            print(f"Loading evoldict from {evoldict!r}")
+            with open(evoldict) as f:
+                evoldict = json.load(f)
 
-        if evoldict and isinstance(evoldict, str):
-            with open(evoldict, 'r') as f:
-                evoldict_untested = json.load(f)
-                if alphabet not in evoldict_untested["alphabets"] or mutations not in evoldict_untested["mutations"]:
-                    raise ValueError(f"Invalid evoldict: {evoldict!r}. \
-                        \nSee https://github.com/sahakyanhk/ames/blob/dev/src/ames/data/evoldict.json as an example.")
-                else:
-                    self.evoldict = evoldict_untested
+        self.evoldict = copy.deepcopy(evoldict or Evolver.evoldict)
+
+        if alphabet not in self.evoldict["alphabets"]:
+            raise ValueError(f"unknown alphabet {alphabet!r}; expected one of {list(self.evoldict['alphabets'])}")
+        if mutations not in self.evoldict["mutations"]:
+            raise ValueError(f"unknown mutation type {mutations!r}; expected one of {list(self.evoldict['mutations'])}")
+
+        self.alphabet_type = alphabet
+        self.mutations_type = mutations
+
+        residues = self.evoldict["alphabets"][alphabet]            # {residue: weight}
+        self.residue_weights = list(residues.values())              # used by randomseq, never zeroed
+        if mutations == "rnd":
+            ops = {"r": 1}
+            residues = {k: 0 for k in residues}                     # never pick a point mutation
         else:
-            self.evoldict = evoldict if evoldict else Evolver.evoldict
+            ops = self.evoldict["mutations"][mutations] or {}
 
-
-        def unpack_evoldict(self, alphabet_type, mutations_type):
-                alphabet = list(self.evoldict["alphabets"][alphabet_type].keys())
-                if  mutations_type in ["npm", "pmo"]:
-                    mutations = [*alphabet, *list(self.evoldict["mutations"][mutations_type].keys())]
-                    weigths_raw = [*list(self.evoldict["alphabets"][alphabet_type].values()), 
-                                   *list(self.evoldict["mutations"][mutations_type].values())]
-                elif mutations_type == "rso": # residues substitution only, no insertions or deletions
-                    mutations = alphabet
-                    weigths_raw = list(self.evoldict["alphabets"][alphabet_type].values())
-                elif mutations_type == "rnd":
-                    mutations = [*alphabet, 'r']
-                    weigths_raw = len(alphabet) * [1e-100] + [1e+100] 
-                else:
-                    raise ValueError(f"unknown mutations_type: {mutations_type!r}; expected {self.evoldict['mutations'].keys()}")
-
-                weigths_sum = sum(weigths_raw)
-                weigths = [i/weigths_sum for i in weigths_raw] # normalize weights
-
-                return alphabet, mutations, weigths
-  
-
-        self.alphabet, self.mutations, self.weigths = unpack_evoldict(self, alphabet, mutations)
-        
+        self.alphabet = list(residues)
         self.alphabet_size = len(self.alphabet)
+        self.mutations = [*self.alphabet, *ops]
 
-    #random sequence generator
-    def randomseq(self,  nres: int = 24, weights = None ) -> str:
-        """
-        random sequence generator
+        weights_raw = [*residues.values(), *ops.values()]
+        total = sum(weights_raw)
+        self.weights = [w / total for w in weights_raw]
+
+
+    def randomseq(self, nres: int = 24, weights=None) -> str:
+
+        """random sequence of length nres, drawn with the alphabet weights unless weights is given"""
         
-        randomseq(100) generates random aa sequence of lenght 100 
-
-        """
-        return ''.join(random.choices(self.alphabet, k=nres, weights=self.weigths[:self.alphabet_size])) #alphabet size can be different if some AA are excluded
-
+        if weights is None:
+            weights = self.residue_weights
+        
+        if len(weights) != self.alphabet_size:
+            raise ValueError(f"weights length {len(weights)} does not match alphabet size {self.alphabet_size}")
+        
+        return ''.join(random.choices(self.alphabet, k=nres, weights=weights))
 
 
     def mutate(self, sequence: str) -> T.Tuple[str, str]:  
@@ -104,10 +99,10 @@ class Evolver:
         min_seq_len = 2
         mutation_types = self.mutations
         alphabet = self.alphabet
-        p = self.weigths
+        p = self.weights
 
-        if seq_len < min_seq_len:
-            mutation = 'd'
+        if seq_len < min_seq_len and '+' in self.mutations:
+            mutation = random.choices("+")[0]
             mutation_position = 0
         else:
             mutation_position = random.choice(range(seq_len))
@@ -118,7 +113,7 @@ class Evolver:
             mutation_info = f'{sequence[mutation_position]}{mutation_position+1}.{mutation}'
 
         elif mutation =='+':
-            mutation = random.choices(alphabet)[0]
+            mutation = self.randomseq(nres=1)
             sequence_mutated = sequence[:mutation_position + 1] + mutation + sequence[mutation_position + 1:]
             mutation_info = f'{sequence[mutation_position]}{mutation_position+1}+{mutation}'
 
@@ -128,7 +123,7 @@ class Evolver:
 
         elif mutation =='*' and seq_len >= min_seq_len: #partial duplication
             max_chunk = min(seq_len - mutation_position, max(1, int(seq_len/2)))
-            insertion_len = random.choice(range(1, max_chunk + 1)) #TODO insertion length probabability
+            insertion_len = random.choice(range(1, max_chunk + 1)) #TODO insertion lenght probability
             sequence_mutated = sequence[:mutation_position] + sequence[mutation_position:][:insertion_len] + sequence[mutation_position:]
             mutation_info = f'{sequence[mutation_position]}{mutation_position+1}*{sequence[mutation_position:][:insertion_len]}'
 
@@ -147,16 +142,16 @@ class Evolver:
 
         elif mutation =='p' and seq_len >= min_seq_len: #permutation
             sequence_mutated =  sequence[mutation_position:] + sequence[:mutation_position]
-            mutation_info = f'{sequence[mutation_position]}{mutation_position+1}p{mutation}'
+            mutation_info = f'{sequence[mutation_position]}{mutation_position+1}{mutation}'
 
         elif mutation =='d': #full duplication #TODO reduce the duplication probability with sequence growth
             linker = self.randomseq(nres=2)
             sequence_mutated = sequence + linker + sequence
             mutation_info = f'd{linker}'
 
-        elif mutation =='r': #all residues are ramdomly changed
-            random_seq_len = random.choice(range(3, 6))
-            #random_seq_len = seq_len
+        elif mutation =='r': #all residues are randomly changed
+            #random_seq_len = random.choice(range(3, 6))
+            random_seq_len = seq_len
             sequence_mutated = self.randomseq(nres=random_seq_len)
             mutation_info = 'r'
 
@@ -165,31 +160,37 @@ class Evolver:
             sequence_mutated = sequence[:mutation_position] + new_residue + sequence[mutation_position + 1:]
             mutation_info = f'{sequence[mutation_position]}{mutation_position+1}.{new_residue}'
 
-        #TODO random change for a chunk of the sequence. (imitation of a frameshift)
-
         return sequence_mutated, mutation_info
 
-
+    @staticmethod
     def select(input_new_gen, input_init_gen, pop_size:int, selection_mode:str = 'weak', norepeat:bool = False, beta = 1): 
 
         mixed_pop = pd.concat([input_new_gen, input_init_gen], axis=0, ignore_index=True) 
 
-        if norepeat and len(mixed_pop['sequence'].unique()) >= pop_size:
+        if norepeat and mixed_pop['sequence'].nunique() >= pop_size:
             mixed_pop = mixed_pop.drop_duplicates(subset=['sequence'])
+            replace = False
+        else:
+            replace = True
 
-        elif selection_mode == "strong":
+        if selection_mode == "strong":
             new_init_gen = mixed_pop.sort_values('score', ascending=False).head(pop_size)
 
         elif selection_mode == "weak":
-            weights = np.array(np.exp(beta * mixed_pop.score) / np.array(np.exp(beta * mixed_pop.score)).sum())
-            new_init_gen = mixed_pop.sample(n=pop_size, weights=weights, replace=(not norepeat)).sort_values('score', ascending=False)
+            s = beta * mixed_pop['score'].to_numpy()
+            weights = np.exp(s - s.max())
+            weights /= weights.sum()
+            new_init_gen = mixed_pop.sample(n=pop_size, weights=weights, replace=replace).sort_values('score', ascending=False)
 
         elif selection_mode == "weak_nt": #weak selection without temperature, i.e. weights are proportional to scores
-            weights = np.array((mixed_pop.score) / ((mixed_pop.score).sum()))
-            new_init_gen = mixed_pop.sample(n=pop_size, weights=weights, replace=(not norepeat)).sort_values('score', ascending=False)
+            s = mixed_pop['score'].to_numpy()
+            s = s - s.min() if s.min() < 0 else s
+            weights = s / s.sum() if s.sum() > 0 else None   # None = uniform
+            new_init_gen = mixed_pop.sample(n=pop_size, weights=weights, replace=replace).sort_values('score', ascending=False)
         else:
             raise ValueError(f"unknown selection_mode: {selection_mode!r}; expected 'strong', 'weak' or 'weak_nt'")
+        
         return new_init_gen
-    
+
 
 

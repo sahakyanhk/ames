@@ -32,10 +32,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('-ed', '--evoldict', type=str, help='alphabets and mutations')
     parser.add_argument('-sm', '--selection_mode', type=str, help='selection mode\n options: strong, weak, weak2')
 
-    parser.add_argument('-a1', '--seq1_alphabet', type=str, help='protein_alphabet [uniform, uniprot, codonrates]')
-    parser.add_argument('-m1', '--seq1_mutations', type=str, help='protein_mutations [npm, pmo, rso]')
-    parser.add_argument('-a2', '--seq2_alphabet', type=str, help='protein_alphabet [uniform, uniprot, codonrates]')
-    parser.add_argument('-m2', '--seq2_mutations', type=str, help='protein_mutations [npm, pmo, rso]')
+    #alphabets, mutations and rates
+    parser.add_argument('-a1', '--seq1_alphabet', type=str, help='1st sequence alphabet [protein, protein_codonrates, protein_uniprot, rna, dna]')
+    parser.add_argument('-m1', '--seq1_mutations', type=str, help='1st sequence mutations [npm, pmo, rso, rnd]')
+    parser.add_argument('-a2', '--seq2_alphabet', type=str, help='2st sequence alphabet [protein, protein_codonrates, protein_uniprot, rna, dna]')
+    parser.add_argument('-m2', '--seq2_mutations', type=str, help='2st sequence mutations [npm, pmo, rso, rnd]')
 
     #pop_size and num generations
     parser.add_argument('-ng', '--num_generations', type=int, help='number of generations')
