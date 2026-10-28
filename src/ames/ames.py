@@ -40,6 +40,7 @@ from amestools import (generate_loghead,
                        print_genlog,
                        ScoringFunction,
                        agg_propensity,
+                       calc_entropy,
                        DATA_DIR
                       )
 
@@ -288,18 +289,22 @@ def extract_results(gen_i: int,
         if args.seq1_type == 'protein':
             seq_data["seq1"]["seqstat"] = protein_seqstat.n_gram_prior(seq_data["seq1"]["sequence"])
             seq_data["seq1"]["agg_propensity"] = 1 - agg_propensity(seq_data["seq1"]["sequence"])
+            seq_data["seq1"]["entropy"] = calc_entropy(seq_data["seq1"]["sequence"])
         else:
             seq_data["seq1"]["seqstat"] = rna_seqstat.n_gram_prior(seq_data["seq1"]["sequence"])
             seq_data["seq1"]["agg_propensity"] = 0 # no aggregation propensity for RNA
+            seq_data["seq1"]["entropy"] = 0
 
 
         if args.seq2:
             if args.seq2_type == 'protein':
                 seq_data["seq2"]["seqstat"] = protein_seqstat.n_gram_prior(seq_data["seq2"]["sequence"])
                 seq_data["seq2"]["agg_propensity"] = 1 - agg_propensity(seq_data["seq2"]["sequence"])
+                seq_data["seq2"]["entropy"] = calc_entropy(seq_data["seq2"]["sequence"])
             else:
                 seq_data["seq2"]["seqstat"] = rna_seqstat.n_gram_prior(seq_data["seq2"]["sequence"])
                 seq_data["seq2"]["agg_propensity"] = 0 # no aggregation propensity for RNA
+                seq_data["seq2"]["entropy"] = 0
 
         # calculate length constraints
         seq1_min_constr = sigmoid(seq_data["seq1"]["len"], args.seq1_min_len, 0.5)
