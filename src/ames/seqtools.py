@@ -207,4 +207,28 @@ class Seqstat:
             # Total N-gram Energy
             ngram_energy = energy_uni + energy_bi + energy_tri
             return  round(float(ngram_energy), 3)
+
+
+    def shannon_entropy(self, sequence: str, k: int = 1, normalyze: bool = True) -> float:
+
+        """Calculate entropy of overlapping k-mers, in bits."""
         
+        total = len(sequence) - k + 1
+        if total <= 0:
+            raise ValueError("k cannot exceed sequence length")
+
+        if k == 1:
+            counts = Counter(sequence)
+        else:
+            counts = Counter(
+                sequence[i:i + k] for i in range(total)
+            )
+
+        entropy = -sum(
+            (count / total) * np.log2(count / total)
+            for count in counts.values()
+        )
+        if normalyze:
+            entropy /= np.log2(k * 20 if self.seqtype == "protein" else k * 4)
+        return round(float(entropy), 3)
+    
