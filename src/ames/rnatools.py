@@ -8,7 +8,7 @@ import numpy as np
 import biotite.structure.io.pdb as pdb
 import biotite.structure as struc
 # import RNA
-from amestools import sigmoid
+from constraints import sigmoid
 
 from pathlib import Path
 _PKG_ROOT = Path(__file__).resolve().parent.parent   # ames/

@@ -23,9 +23,8 @@ from evolution import Evolver
 from seqtools import Seqstat
 from psique import pypsique
 from rnatools import rna_ss_penalty, rna_secondary_structure, rna_seq_search, RFAM_DB
-
 from arguments import parse_args
-
+from constraints import sigmoid, flatbottom
 from amestools import (generate_loghead,
                        save_checkpoint,
                        sequence_signature,
@@ -33,7 +32,6 @@ from amestools import (generate_loghead,
                        calculate_homogeneity,
                        update_beta,
                        compress_str, 
-                       sigmoid,
                        backup_output, 
                        batch_sequence_dataset, 
                        create_init_gen,
@@ -307,16 +305,10 @@ def extract_results(gen_i: int,
                 seq_data["seq2"]["entropy"] = 0
 
         # calculate length constraints
-        seq1_min_constr = sigmoid(seq_data["seq1"]["len"], args.seq1_min_len, 0.5)
-        seq1_max_constr = 1 - sigmoid(seq_data["seq1"]["len"], args.seq1_max_len, 0.8) #change to 0.08 add as a parameter
+        seq1_len_penalty = 1 - flatbottom(seq_data["seq1"]["len"], args.seq1_min_len, args.seq1_min0_len, args.seq1_max0_len, args.seq1_max_len)
 
-        seq1_len_penalty = seq1_min_constr * seq1_max_constr
-        
         if args.seq2:
-            seq2_min_constr = sigmoid(seq_data["seq2"]["len"], args.seq2_min_len, 0.5)
-            seq2_max_constr = 1 - sigmoid(seq_data["seq2"]["len"], args.seq2_max_len, 0.08) 
-            seq2_len_penalty = seq2_min_constr * seq2_max_constr
-            
+            seq2_len_penalty = 1 - flatbottom(seq_data["seq2"]["len"], args.seq2_min_len, args.seq2_min0_len, args.seq2_max0_len, args.seq2_max_len)
         else: 
             seq2_len_penalty = 1
 
@@ -343,8 +335,8 @@ def extract_results(gen_i: int,
                         'seqid': 0.0,
                         'tmscore': 0.0,
                         'score': score,
-                        'rfam_score': 0.0,
-                        'rfam_hit': '-',
+                        # 'rfam_score': 0.0,
+                        # 'rfam_hit': '-',
                         'sequence_data': seq_data, 
                         'mutation': mutation,
                         'prev_id': prev_id,
@@ -545,8 +537,8 @@ def extract_results(gen_i: int,
             "seqid": sequence_identity,
             "tmscore": tmscore,
             'score': score,
-            "rfam_score": rfam_score, 
-            "rfam_hit": rfam_hit,
+            # "rfam_score": rfam_score, 
+            # "rfam_hit": rfam_hit,
             'sequence_data': seq_data, 
             'mutation': mutation,
             'prev_id': prev_id,

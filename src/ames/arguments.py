@@ -66,13 +66,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--seq2_rate', type=float, help='probability of 2nd sequence to mutate [0,1]')
     #ligand setup
     parser.add_argument('--ligand', help="ligand(s) provided in slmiles of ccd format separated with commas")
+    
     #constraints
-    parser.add_argument('--seq1_min_len', type=int, help='seq1 minimal length constraint')
-    parser.add_argument('--seq1_max_len', type=int, help='seq1 maximal length constraint')
-    parser.add_argument('--seq2_min_len', type=int, help='seq2 minimal length constraint')
-    parser.add_argument('--seq2_max_len', type=int, help='seq2 maximal length constraint')
+    parser.add_argument('--seq1_min_len', type=int, help='seq1 minimal length')
+    parser.add_argument('--seq1_min0_len', type=int, help='where seq1 minimal length constraint starts, default is seq1_min_len+10')
+    parser.add_argument('--seq1_max_len', type=int, help='seq1 maximal length')
+    parser.add_argument('--seq1_max0_len', type=int, help='where seq1 maximal length constraint starts, default is seq1_max_len-10')
+    parser.add_argument('--seq2_min_len', type=int, help='seq2 minimal length')
+    parser.add_argument('--seq2_min0_len', type=int, help='where seq2 minimal length constraint starts, default is seq2_min_len+10')
+    parser.add_argument('--seq2_max_len', type=int, help='seq2 maximal length')
+    parser.add_argument('--seq2_max0_len', type=int, help='where seq2 maximal length constraint starts, default is seq2_max_len-10')
     parser.add_argument('--helix_len_penalty', type=int, help='alpha-helix maximal length constraint')
     parser.add_argument('--strand_len_penalty', type=int, help='beta-strand maximal length constraint')
+
     #outputs
     parser.add_argument('-o','--outpath', type=str, help='output dir name where log and checkpoint files are saved, "ames_output/output" by default')
     parser.add_argument('-l', '--log', type=str, help='output log file name, "progress.log" by default')
@@ -105,6 +111,16 @@ def parse_args() -> argparse.Namespace:
         sys.exit(0)
 
     args = parser.parse_args(remaining)
+
+    # setup missing seq len constraints
+    if args.seq1_min0_len is None:
+        args.seq1_min0_len = args.seq1_min_len + 10
+    if args.seq1_max0_len is None:  
+        args.seq1_max0_len = args.seq1_max_len - 10
+    if args.seq2_min0_len is None:
+        args.seq2_min0_len = args.seq2_min_len + 10
+    if args.seq2_max0_len is None:
+        args.seq2_max0_len = args.seq2_max_len - 10
 
     if args.iseq1:
         try:

@@ -132,12 +132,6 @@ def decompress_str(b64_str: str) -> str:
     return zstd.decompress(compressed).decode('utf-8')
 
 
-def sigmoid(x:T.Union[float, int], L0=0.0, c=0.1) -> float:
-    z = c * (L0 - x)
-    # Clip to prevent overflow
-    z = np.clip(z, -709, 709)  # e^500 is near max float, e^-500 is near 0
-    return 1 / (1 + np.exp(z))
-
 def update_beta(args):
     args.beta += args.annealing_step
     args.beta = round(args.beta, 3)
@@ -276,8 +270,8 @@ def create_init_gen(evolver1, evolver2, args) -> pd.DataFrame:
                                      "seqid",
                                      "tmscore",
                                      "score", 
-                                     "rfam_score",
-                                     "rfam_hit",
+                                    #  "rfam_score",
+                                    #  "rfam_hit",
                                      "sequence_data", 
                                      "mutation", 
                                      "prev_id", 
@@ -393,8 +387,8 @@ def create_init_gen(evolver1, evolver2, args) -> pd.DataFrame:
     init_gen["seqid"] = 0.0
     init_gen["tmscore"] = 0.0
     init_gen["score"] = 0.001 
-    init_gen["rfam_score"] = 0.0
-    init_gen["rfam_hit"] = '-'
+    # init_gen["rfam_score"] = 0.0
+    # init_gen["rfam_hit"] = '-'
     init_gen["sequence_data"] = seq_data        
     init_gen["mutation"] = "init_gen"
     init_gen["prev_id"] = "init_gen"
