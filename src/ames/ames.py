@@ -498,9 +498,9 @@ def extract_results(gen_i: int,
                 seq_id = sequence_identity 
             else:
                 seq_id = 0
-                penalty = penalty * sequence_identity**2
+                penalty = penalty * sequence_identity**2 # 
 
-            score = 0.3*ptm + 0.3*tm_score + 0.4*seq_id
+            score =  0.2*plddt + 0.2*ptm + 0.3*tm_score + 0.3*seq_id
 
             score = round(score * penalty, 3)
 
