@@ -459,29 +459,3 @@ def print_genlog(genlog:pd.DataFrame, args) -> None:
     
     genlog['sequence_data'] = genlog['sequence_data'].apply(extract_sequence)
     print(genlog.to_string(index=False, header=True))
-
-@lru_cache(maxsize=1)
-def _canya_model():
-    return Canya(weights=DATA_DIR / "models" / "model_weights1.npz")
-
-
-def agg_propensity(sequence: str) -> float:
-    "calculate aggregration propensity a sequence using CANYA"
-    return _canya_model().score([sequence])[0]
-
-def calc_entropy(sequence: str) -> float:
-    "calculates Shannon entropy of a sequence"
-
-    if not sequence:
-        return 0.0
-    
-    frequencies = {}
-    for aa in sequence:
-        #set default value to 0 if key doesn't exist yet
-        frequencies[aa] = frequencies.get(aa, 0) + 1
-
-    total = len(sequence)
-    p = [pi / total for pi in frequencies.values()]
-    #normalize to 0-1 scale
-    entropy = float(-sum(pi * np.log2(pi) for pi in p))
-    return float(entropy / np.log2(20))

@@ -283,9 +283,10 @@ class Canya:
 _DEFAULT = None
 
 
-def score_sequences(sequences, on_invalid="warn"):
+def aggregation_score(sequence, on_invalid="warn"):
     """Convenience wrapper around a lazily created module-level Canya."""
     global _DEFAULT
     if _DEFAULT is None:
         _DEFAULT = Canya()
-    return _DEFAULT.score(sequences, on_invalid=on_invalid)
+    aggscore = _DEFAULT.score(sequence, on_invalid=on_invalid)
+    return round(aggscore[0], 3) if isinstance(sequence, str) else aggscore

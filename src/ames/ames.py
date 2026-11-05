@@ -21,9 +21,10 @@ if _src_dir not in sys.path:
 import pdb_contacts as pc
 from evolution import Evolver
 from seqtools import Seqstat
+from canya import aggregation_score
 from psique import pypsique
-from rnatools import rna_ss_penalty, rna_secondary_structure, rna_seq_search, RFAM_DB
 from arguments import parse_args
+from rnatools import rna_ss_penalty, rna_secondary_structure, rna_seq_search, RFAM_DB
 from constraints import sigmoid, flatbottom
 from amestools import (generate_loghead,
                        save_checkpoint,
@@ -37,8 +38,6 @@ from amestools import (generate_loghead,
                        create_init_gen,
                        print_genlog,
                        ScoringFunction,
-                       agg_propensity,
-                       calc_entropy,
                        DATA_DIR
                       )
 
@@ -286,23 +285,23 @@ def extract_results(gen_i: int,
         # calculate seq_stat 
         if args.seq1_type == 'protein':
             seq_data["seq1"]["seqstat"] = protein_seqstat.n_gram_prior(seq_data["seq1"]["sequence"])
-            seq_data["seq1"]["agg_propensity"] = 1 - agg_propensity(seq_data["seq1"]["sequence"])
-            seq_data["seq1"]["entropy"] = calc_entropy(seq_data["seq1"]["sequence"])
+            seq_data["seq1"]["aggregation_propensity"] = 1 - aggregation_score(seq_data["seq1"]["sequence"])
+            seq_data["seq1"]["entropy"] = protein_seqstat.shannon_entropy(seq_data["seq1"]["sequence"])
         else:
             seq_data["seq1"]["seqstat"] = rna_seqstat.n_gram_prior(seq_data["seq1"]["sequence"])
-            seq_data["seq1"]["agg_propensity"] = 0 # no aggregation propensity for RNA
-            seq_data["seq1"]["entropy"] = 0
+            seq_data["seq1"]["aggregation_propensity"] = 0 # no aggregation propensity for RNA
+            seq_data["seq1"]["entropy"] = rna_seqstat.shannon_entropy(seq_data["seq1"]["sequence"])
 
 
         if args.seq2:
             if args.seq2_type == 'protein':
                 seq_data["seq2"]["seqstat"] = protein_seqstat.n_gram_prior(seq_data["seq2"]["sequence"])
-                seq_data["seq2"]["agg_propensity"] = 1 - agg_propensity(seq_data["seq2"]["sequence"])
-                seq_data["seq2"]["entropy"] = calc_entropy(seq_data["seq2"]["sequence"])
+                seq_data["seq2"]["aggregation_propensity"] = 1 - aggregation_score(seq_data["seq2"]["sequence"])
+                seq_data["seq2"]["entropy"] = protein_seqstat.shannon_entropy(seq_data["seq2"]["sequence"])
             else:
                 seq_data["seq2"]["seqstat"] = rna_seqstat.n_gram_prior(seq_data["seq2"]["sequence"])
-                seq_data["seq2"]["agg_propensity"] = 0 # no aggregation propensity for RNA
-                seq_data["seq2"]["entropy"] = 0
+                seq_data["seq2"]["aggregation_propensity"] = 0 # no aggregation propensity for RNA
+                seq_data["seq2"]["entropy"] = rna_seqstat.shannon_entropy(seq_data["seq2"]["sequence"])
 
         # calculate length constraints
         seq1_len_penalty = 1 - flatbottom(seq_data["seq1"]["len"], args.seq1_min_len, args.seq1_min0_len, args.seq1_max0_len, args.seq1_max_len)
@@ -508,7 +507,7 @@ def extract_results(gen_i: int,
         #<<<<<<<<<<<<<<<<<<<<<<<<<< Aggregation propensity Scoring test <<<<<<<<<<<<<<<<<<<<<<<<<<<
 
         if args.agg_propensity:
-            agg_prop = seq_data["seq1"]["agg_propensity"]
+            agg_prop = seq_data["seq1"]["aggregation_propensity"]
             score = scoring.score(ptm, 
                               plddt, 
                               iptm, 
@@ -589,6 +588,7 @@ rna_seqstat = Seqstat(str(DATA_DIR / 'rnacentral90_stat.json'))
 
 scoring = ScoringFunction(args.evolution_type)
 
+aggregation_score([])# load the aggregation score model to memory
 
 #backup if output directory exists
 if args.nobackup:
