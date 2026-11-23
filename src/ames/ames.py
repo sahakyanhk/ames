@@ -289,7 +289,7 @@ def extract_results(gen_i: int,
             seq_data["seq1"]["entropy"] = protein_seqstat.shannon_entropy(seq_data["seq1"]["sequence"])
         else:
             seq_data["seq1"]["seqstat"] = rna_seqstat.n_gram_prior(seq_data["seq1"]["sequence"])
-            seq_data["seq1"]["aggregation_propensity"] = 0 # no aggregation propensity for RNA
+            seq_data["seq1"]["aggregation_propensity"] = 1 # no aggregation propensity for RNA
             seq_data["seq1"]["entropy"] = rna_seqstat.shannon_entropy(seq_data["seq1"]["sequence"])
 
 
@@ -453,6 +453,11 @@ def extract_results(gen_i: int,
                     * seq1_maxalpha_penalty * seq1_maxstrand_penalty \
                     * seq2_maxalpha_penalty * seq2_maxstrand_penalty, 3)
         
+        if args.agg_propensity:
+            penalty = round(penalty \
+                * seq_data["seq1"]["aggregation_propensity"] \
+                * seq_data["seq1"]["aggregation_propensity"], 3)
+
         rfam_score = rfam_score_dict.get(meta_id, 0)
         rfam_hit = rfam_hit_dict.get(meta_id, "-")
         
@@ -505,18 +510,6 @@ def extract_results(gen_i: int,
 
 
         #<<<<<<<<<<<<<<<<<<<<<<<<<< Aggregation propensity Scoring test <<<<<<<<<<<<<<<<<<<<<<<<<<<
-
-        if args.agg_propensity:
-            agg_prop = seq_data["seq1"]["aggregation_propensity"]
-            score = scoring.score(ptm, 
-                              plddt, 
-                              iptm, 
-                              iplddt, 
-                              contact_density, 
-                              ligand_contact_density,
-                              agg_prop,
-                              penalty
-                              ) + (0.5 * rfam_score)
 
         row_data = {
             'gndx': gen_i,

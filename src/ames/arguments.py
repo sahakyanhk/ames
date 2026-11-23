@@ -102,8 +102,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--structure_template1', '-strtmpl1', type=str, help="path to the first structure template (pdb/cif)")
     parser.add_argument('--structure_template2', '-strtmpl2', type=str, help="path to the second structure template (pdb/cif)")
     parser.add_argument('--sequence_template', '-seqtmpl', type=str, help="path to the first sequence template (PDB/FASTA/sequence string)")
-
-    parser.add_argument('--agg_propensity', '-aggprop', action='store_true', help="Include aggregation propensity in scoring function")
+    parser.add_argument('--agg_propensity', '-aggprop', action='store_false', help="Include aggregation propensity in scoring function")
 
 
     if len(sys.argv) == 1:

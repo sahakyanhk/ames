@@ -57,5 +57,6 @@
     "structure_template1": null,
     "structure_template2": null,
     "sequence_template1": null,
-    "sequence_template2": null
+    "sequence_template2": null,
+    "agg_propensity": false
 }
