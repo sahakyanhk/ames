@@ -270,8 +270,6 @@ def create_init_gen(evolver1, evolver2, args) -> pd.DataFrame:
                                      "seqid",
                                      "tmscore",
                                      "score", 
-                                    #  "rfam_score",
-                                    #  "rfam_hit",
                                      "sequence_data", 
                                      "mutation", 
                                      "prev_id", 
@@ -387,8 +385,6 @@ def create_init_gen(evolver1, evolver2, args) -> pd.DataFrame:
     init_gen["seqid"] = 0.0
     init_gen["tmscore"] = 0.0
     init_gen["score"] = 0.001 
-    # init_gen["rfam_score"] = 0.0
-    # init_gen["rfam_hit"] = '-'
     init_gen["sequence_data"] = seq_data        
     init_gen["mutation"] = "init_gen"
     init_gen["prev_id"] = "init_gen"
@@ -408,35 +404,34 @@ class ScoringFunction:
                 self.scoring_weights = json.load(f)
         else:
             self.scoring_weights = {
-            'PROTEIN_EVOLUTION':                    {"ptm": 0.4, "plddt": 0.2, "iptm": 0.0,  "iplddt": 0.0,  "cd": 0.3, "lcd": 0.0, "agg_propensity": 0.1}, #modified for score test
-            'NUCLEIC_EVOLUTION':                    {"ptm": 0.5, "plddt": 0.5, "iptm": 0.0,  "iplddt": 0.0,  "cd": 0.0,  "lcd": 0.0, "agg_propensity": 0.0},
-            'PROTEIN_PROTEIN_EVOLUTION':            {"ptm": 0.2, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.25, "cd": 0.2, "lcd": 0.0, "agg_propensity": 0.0},
-            'PROTEIN_PROTEIN_COEVOLUTION':          {"ptm": 0.2, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.25, "cd": 0.2, "lcd": 0.0, "agg_propensity": 0.0},
-            'PROTEIN_NUCLEIC_EVOLUTION':            {"ptm": 0.2, "plddt": 0.2, "iptm": 0.3, "iplddt": 0.3, "cd": 0.1, "lcd": 0.0, "agg_propensity": 0.0},
-            'PROTEIN_NUCLEIC_COEVOLUTION':          {"ptm": 0.2, "plddt": 0.2, "iptm": 0.3, "iplddt": 0.3, "cd": 0.1, "lcd": 0.0, "agg_propensity": 0.0},
-            'NUCLEIC_NUCLEIC_EVOLUTION':            {"ptm": 0.2, "plddt": 0.2, "iptm": 0.3, "iplddt": 0.3, "cd": 0.0, "lcd": 0.0, "agg_propensity": 0.0},
-            'NUCLEIC_NUCLEIC_COEVOLUTION':          {"ptm": 0.2, "plddt": 0.2, "iptm": 0.3, "iplddt": 0.3, "cd": 0.0, "lcd": 0.0, "agg_propensity": 0.0},
-            'PROTEIN_LIGAND_EVOLUTION':              {"ptm": 0.1, "plddt": 0.1, "iptm": 0.2, "iplddt": 0.2, "cd": 0.2, "lcd": 0.2, "agg_propensity": 0.0},
-            'NUCLEIC_LIGAND_EVOLUTION':             {"ptm": 0.1, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.3, "cd": 0.0, "lcd": 0.25, "agg_propensity": 0.0}, 
-            'PROTEIN_PROTEIN_LIGAND_EVOLUTION':     {"ptm": 0.1, "plddt": 0.1, "iptm": 0.2, "iplddt": 0.2, "cd": 0.2, "lcd": 0.2, "agg_propensity": 0.0},
-            'PROTEIN_PROTEIN_LIGAND_COEVOLUTION':   {"ptm": 0.1, "plddt": 0.1, "iptm": 0.2, "iplddt": 0.2, "cd": 0.2, "lcd": 0.2, "agg_propensity": 0.0},
-            'PROTEIN_NUCLEIC_LIGAND_EVOLUTION':     {"ptm": 0.1, "plddt": 0.1, "iptm": 0.2, "iplddt": 0.2, "cd": 0.2, "lcd": 0.2, "agg_propensity": 0.0},
-            'PROTEIN_NUCLEIC_LIGAND_COEVOLUTION':   {"ptm": 0.1, "plddt": 0.1, "iptm": 0.2, "iplddt": 0.2, "cd": 0.2, "lcd": 0.2, "agg_propensity": 0.0},
-            'NUCLEIC_NUCLEIC_LIGAND_EVOLUTION':     {"ptm": 0.1, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.3, "cd": 0.0, "lcd": 0.25, "agg_propensity": 0.0},
-            'NUCLEIC_NUCLEIC_LIGAND_COEVOLUTION':   {"ptm": 0.1, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.3, "cd": 0.0, "lcd": 0.25, "agg_propensity": 0.0}
+            'PROTEIN_EVOLUTION':                    {"ptm": 0.4, "plddt": 0.2, "iptm": 0.0,  "iplddt": 0.0,  "cd": 0.3, "lcd": 0.0, }, 
+            'NUCLEIC_EVOLUTION':                    {"ptm": 0.5, "plddt": 0.5, "iptm": 0.0,  "iplddt": 0.0,  "cd": 0.0,  "lcd": 0.0, },
+            'PROTEIN_PROTEIN_EVOLUTION':            {"ptm": 0.2, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.25, "cd": 0.2, "lcd": 0.0, },
+            'PROTEIN_PROTEIN_COEVOLUTION':          {"ptm": 0.2, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.25, "cd": 0.2, "lcd": 0.0, },
+            'PROTEIN_NUCLEIC_EVOLUTION':            {"ptm": 0.2, "plddt": 0.2, "iptm": 0.3, "iplddt": 0.3, "cd": 0.1, "lcd": 0.0, },
+            'PROTEIN_NUCLEIC_COEVOLUTION':          {"ptm": 0.2, "plddt": 0.2, "iptm": 0.3, "iplddt": 0.3, "cd": 0.1, "lcd": 0.0, },
+            'NUCLEIC_NUCLEIC_EVOLUTION':            {"ptm": 0.2, "plddt": 0.2, "iptm": 0.3, "iplddt": 0.3, "cd": 0.0, "lcd": 0.0, },
+            'NUCLEIC_NUCLEIC_COEVOLUTION':          {"ptm": 0.2, "plddt": 0.2, "iptm": 0.3, "iplddt": 0.3, "cd": 0.0, "lcd": 0.0, },
+            'PROTEIN_LIGAND_EVOLUTION':             {"ptm": 0.1, "plddt": 0.1, "iptm": 0.2, "iplddt": 0.2, "cd": 0.2, "lcd": 0.2, },
+            'NUCLEIC_LIGAND_EVOLUTION':             {"ptm": 0.1, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.3, "cd": 0.0, "lcd": 0.25, }, 
+            'PROTEIN_PROTEIN_LIGAND_EVOLUTION':     {"ptm": 0.1, "plddt": 0.1, "iptm": 0.2, "iplddt": 0.2, "cd": 0.2, "lcd": 0.2, },
+            'PROTEIN_PROTEIN_LIGAND_COEVOLUTION':   {"ptm": 0.1, "plddt": 0.1, "iptm": 0.2, "iplddt": 0.2, "cd": 0.2, "lcd": 0.2, },
+            'PROTEIN_NUCLEIC_LIGAND_EVOLUTION':     {"ptm": 0.1, "plddt": 0.1, "iptm": 0.2, "iplddt": 0.2, "cd": 0.2, "lcd": 0.2, },
+            'PROTEIN_NUCLEIC_LIGAND_COEVOLUTION':   {"ptm": 0.1, "plddt": 0.1, "iptm": 0.2, "iplddt": 0.2, "cd": 0.2, "lcd": 0.2, },
+            'NUCLEIC_NUCLEIC_LIGAND_EVOLUTION':     {"ptm": 0.1, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.3, "cd": 0.0, "lcd": 0.25, },
+            'NUCLEIC_NUCLEIC_LIGAND_COEVOLUTION':   {"ptm": 0.1, "plddt": 0.1, "iptm": 0.25, "iplddt": 0.3, "cd": 0.0, "lcd": 0.25, }
             }       
 
         self.weigths = self.scoring_weights[evolution_type]
 
-    def score(self, ptm, plddt, iptm, iplddt, contact_density, ligand_contact_density, agg_propensity, penalty):
+    def score(self, ptm, plddt, iptm, iplddt, contact_density, ligand_contact_density, penalty):
         
         s = (self.weigths["iptm"]*iptm + 
              self.weigths["iplddt"]*iplddt + 
              self.weigths["ptm"]*ptm + 
              self.weigths["plddt"]*plddt +
              self.weigths["cd"]*contact_density + 
-             self.weigths["lcd"]*ligand_contact_density +
-             self.weigths["agg_propensity"]*agg_propensity) * penalty
+             self.weigths["lcd"]*ligand_contact_density) * penalty
         
         return round(s, 3)
 

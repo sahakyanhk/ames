@@ -24,7 +24,7 @@ from seqtools import Seqstat
 from canya import aggregation_score
 from psique import pypsique
 from arguments import parse_args
-from rnatools import rna_ss_penalty, rna_secondary_structure, rna_seq_search, RFAM_DB
+from rnatools import rna_ss_penalty, rna_secondary_structure
 from constraints import sigmoid, flatbottom
 from amestools import (generate_loghead,
                        save_checkpoint,
@@ -252,25 +252,6 @@ def extract_results(gen_i: int,
     global new_gen # Access the global dataframe
 
     structures, plddts, ptms, iptms = structure_predictor_ouptut
-
-    #RFAM function reward 
-    if args.rfam_scoring and (args.seq1_type == "rna" or args.seq2_type == "rna"):
-        if args.rfam_scoring == "seq1":
-            rna_sequences = [seq_data["seq1"]["sequence"] for seq_data in sequence_data_batch]
-            rfam_results = rna_seq_search(headers, rna_sequences, tmp="/tmp/", keep_tmp=False)
-        elif args.rfam_scoring == "seq2":
-            rna_sequences = [seq_data["seq2"]["sequence"] for seq_data in sequence_data_batch]
-            rfam_results = rna_seq_search(headers, rna_sequences, tmp="/tmp/", keep_tmp=False)
-        else:
-            raise ValueError("--rfam_score should be either seq1 or seq2, and\
-                                \none of the evolving chains should be RNA.")    
-        rfam_score_dict = {h:s for h, s in zip(rfam_results["headers"], rfam_results["normalized_evalues"])}
-        rfam_hit_dict = {h:s for h, s in zip(rfam_results["headers"], rfam_results["rfams"])}
-    else:
-        rfam_score_dict = {}
-        rfam_hit_dict = {}
-
-
         
     batch_rows = [] 
 
@@ -334,8 +315,6 @@ def extract_results(gen_i: int,
                         'seqid': 0.0,
                         'tmscore': 0.0,
                         'score': score,
-                        # 'rfam_score': 0.0,
-                        # 'rfam_hit': '-',
                         'sequence_data': seq_data, 
                         'mutation': mutation,
                         'prev_id': prev_id,
@@ -457,9 +436,6 @@ def extract_results(gen_i: int,
             penalty = round(penalty \
                 * seq_data["seq1"]["aggregation_propensity"] \
                 * seq_data["seq2"]["aggregation_propensity"], 3)
-
-        rfam_score = rfam_score_dict.get(meta_id, 0)
-        rfam_hit = rfam_hit_dict.get(meta_id, "-")
         
         #=============================== SCORING ===============================#
         score = scoring.score(ptm, 
@@ -468,9 +444,8 @@ def extract_results(gen_i: int,
                               iplddt, 
                               contact_density, 
                               ligand_contact_density,
-                              0.0,
                               penalty
-                              ) + (0.5 * rfam_score)
+                              ) 
  
         ############################################################################
         #>>>>>>>>>>>>>>>>>>>>>>>>>> TEMPLATE SCORING TEST >>>>>>>>>>>>>>>>>>>>>>>>>> 
@@ -494,9 +469,9 @@ def extract_results(gen_i: int,
                 seq_id = sequence_identity 
             else:
                 seq_id = 0
-                penalty = penalty * sequence_identity**2 # 
+                penalty = penalty * sequence_identity**2 
 
-            score =  0.2*plddt + 0.2*ptm + 0.3*tm_score + 0.3*seq_id
+            score = 0.1*contact_density + 0.15*plddt + 0.15*ptm + 0.3*tm_score + 0.3*seq_id
 
             score = round(score * penalty, 3)
 
@@ -529,8 +504,6 @@ def extract_results(gen_i: int,
             "seqid": sequence_identity,
             "tmscore": tmscore,
             'score': score,
-            # "rfam_score": rfam_score, 
-            # "rfam_hit": rfam_hit,
             'sequence_data': seq_data, 
             'mutation': mutation,
             'prev_id': prev_id,
@@ -557,12 +530,6 @@ def extract_results(gen_i: int,
 
 
 args = parse_args()
-
-if args.rfam_scoring:
-    if shutil.which("cmscan") is None:
-        raise FileNotFoundError("--rfam_scoring needs cmscan, install infernal in the active environment")
-    if not RFAM_DB.exists():
-        raise FileNotFoundError(f"--rfam_scoring needs an Rfam database, {RFAM_DB} not found")
 
 evolver1 = Evolver(alphabet = args.seq1_alphabet,
                   mutations = args.seq1_mutations,
