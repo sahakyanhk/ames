@@ -456,7 +456,7 @@ def extract_results(gen_i: int,
         if args.agg_propensity:
             penalty = round(penalty \
                 * seq_data["seq1"]["aggregation_propensity"] \
-                * seq_data["seq1"]["aggregation_propensity"], 3)
+                * seq_data["seq2"]["aggregation_propensity"], 3)
 
         rfam_score = rfam_score_dict.get(meta_id, 0)
         rfam_hit = rfam_hit_dict.get(meta_id, "-")
