@@ -246,7 +246,7 @@ class Canya:
         """
         if on_invalid not in ("warn", "raise", "nan"):
             raise ValueError("on_invalid must be 'warn', 'raise' or 'nan'")
-        sequences = list(sequences)
+        sequences = sequences if isinstance(sequences, (list, tuple)) else [sequences]
         out = [float("nan")] * len(sequences)
         batch, pending = [], 0
         for i, seq in enumerate(sequences):
@@ -289,4 +289,9 @@ def aggregation_score(sequence, on_invalid="warn"):
     if _DEFAULT is None:
         _DEFAULT = Canya()
     aggscore = _DEFAULT.score(sequence, on_invalid=on_invalid)
-    return round(aggscore[0], 3) if isinstance(sequence, str) else aggscore
+    
+    if len(aggscore) == 1:
+        return round(aggscore[0], 3)
+    else:
+        return  aggscore
+
