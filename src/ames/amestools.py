@@ -21,7 +21,7 @@ from pdbutils import parsepdb
 from seqtools import Seqstat, fasta2dict
 from _version import get_version
 
-from canya import Canya
+from align.sequence_alignment import sequence_identity as seqid
 
 
 # Resolve repo root from this file's location so paths work from any directory
@@ -249,6 +249,17 @@ def batch_sequence_dataset(sequences: T.List[T.Tuple[str, dict]],
     if batch_headers:
         yield batch_headers, batch_sequences
 
+def minimize_sequence_identity(evolver, init_seq, sequence_template, min_seqid) -> str: 
+    """
+    randomly mutate sequence until sequence identity is below min_seqid
+    """
+    
+    sequence_identity = seqid(init_seq, sequence_template)
+    while sequence_identity > min_seqid:
+        init_seq, _ = evolver.mutate(init_seq)
+        sequence_identity = seqid(init_seq, sequence_template)
+
+    return init_seq
 
 def create_init_gen(evolver1, evolver2, args) -> pd.DataFrame:
     '''Create initial generation to start simulation'''
@@ -314,14 +325,14 @@ def create_init_gen(evolver1, evolver2, args) -> pd.DataFrame:
         seq_data = [{
             "seq1": {
                 "type": args.seq1_type,
-                "sequence": args.seq1_init,
+                "sequence": minimize_sequence_identity(evolver1, args.seq1_init, args.sequence_template1, args.seq1_min_seqid,) \
+                                                                            if args.seq1_min_seqid else args.seq1_init,
                 "len": args.seq1_len,
                 "ss": "SECONDARYSTRUCTURES",
                 "evolve": args.seq1_evol,
                 "seqstat": seqstat[args.seq1_type].n_gram_prior(args.seq1_init)
             }
-        } for _ in range(args.pop_size)]
-        
+        } for _ in range(args.pop_size)]        
         if args.seq2_init == 'randoms':
              init_gen['id'] = [f'initseq{i}' for i in range(args.pop_size)]
         else:
@@ -357,7 +368,8 @@ def create_init_gen(evolver1, evolver2, args) -> pd.DataFrame:
             for i in range(args.pop_size):
                 seq_data[i]["seq2"] = {
                     "type": args.seq2_type,
-                    "sequence": args.seq2_init,
+                    "sequence": minimize_sequence_identity(evolver2, args.seq2_init, args.sequence_template2, args.seq2_min_seqid,) \
+                                                                            if args.seq2_min_seqid else args.seq2_init,
                     "ss": "SECONDARYSTRUCTURES",
                     "len": args.seq2_len,
                     "evolve": args.seq2_evol,

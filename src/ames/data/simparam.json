@@ -53,6 +53,8 @@
     "engine": "esmfold2",
     "norepeat": false,
     "max_seq_per_batch": null,
+    "seq1_min_seqid": null,
+    "seq2_min_seqid": null,
     "structure_template1": null,
     "structure_template2": null,
     "sequence_template1": null,

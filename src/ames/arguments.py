@@ -98,9 +98,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--engine', type=str, help="structure prediction engine [esmfold2, alphafold3, openfold3, esmfold, simulacrum]")
     parser.add_argument('--norepeat', action='store_true', help='do not generate and/or select the same sequences more than once, off by default')
     parser.add_argument('--max_seq_per_batch', type=int, help='max_seq_per_batch, half or population size by default ')
-    parser.add_argument('--structure_template1', '-strtmpl1', type=str, help="path to the first structure template (pdb/cif)")
-    parser.add_argument('--structure_template2', '-strtmpl2', type=str, help="path to the second structure template (pdb/cif)")
-    parser.add_argument('--sequence_template', '-seqtmpl', type=str, help="path to the first sequence template (PDB/FASTA/sequence string)")
+    parser.add_argument('--seq1_min_seqid', type=float, help='minimum sequence identity to the template for seq1, 0.0 by default')
+    parser.add_argument('--seq2_min_seqid', type=float, help='minimum sequence identity to the template for seq2, 0.0 by default')
+    parser.add_argument('--structure_template1', type=str, help="path to the first structure template (pdb/cif)")
+    parser.add_argument('--structure_template2', type=str, help="path to the second structure template (pdb/cif)")
+    parser.add_argument('--sequence_template1', type=str, help="path to the first sequence template (PDB/FASTA/sequence string)")
+    parser.add_argument('--sequence_template2', type=str, help="path to the first sequence template (PDB/FASTA/sequence string)")
     parser.add_argument('--agg_propensity', '-aggprop', action='store_false', help="Include aggregation propensity in scoring function")
 
 
@@ -291,29 +294,50 @@ def parse_args() -> argparse.Namespace:
         else:
             raise FileNotFoundError(f"Structure template 1 file not found: {args.structure_template1}")
 
-    # if args.structure_template2:
-    #     if os.path.isfile(args.structure_template2):
-    #         with open(args.structure_template2, 'r') as f:
-    #             args.structure_template2 = f.read().strip()
-    #     else:
-    #         raise FileNotFoundError(f"Structure template 2 file not found: {args.structure_template2}")
+    if args.structure_template2:
+        if os.path.isfile(args.structure_template2):
+            with open(args.structure_template2, 'r') as f:
+                args.structure_template2 = f.read().strip()
+        else:
+            raise FileNotFoundError(f"Structure template 2 file not found: {args.structure_template2}")
 
-    if args.sequence_template:
-        if os.path.isfile(args.sequence_template):
+    if args.sequence_template1:
+        if os.path.isfile(args.sequence_template1):
 
-            if args.sequence_template.endswith(('.fasta', '.fas', '.fa')):
-                fasta_dict = fasta2dict(args.sequence_template)
-                args.sequence_template = next(iter(fasta_dict.values())).strip() 
+            if args.sequence_template1.endswith(('.fasta', '.fas', '.fa')):
+                fasta_dict = fasta2dict(args.sequence_template1)
+                args.sequence_template1 = next(iter(fasta_dict.values())).strip() 
 
-            elif args.sequence_template.endswith(('.pdb')):
-                args.sequence_template = parsepdb(args.sequence_template).sequence[0]
+            elif args.sequence_template1.endswith(('.pdb')):
+                args.sequence_template1 = parsepdb(args.sequence_template1).sequence[0]
 
-            elif set(args.sequence_template).issubset(set('ACDEFGHIKLMNPQRSTVWY')): 
-                args.sequence_template = args.sequence_template.upper()
+            elif set(args.sequence_template1).issubset(set('ACDEFGHIKLMNPQRSTVWY')): 
+                args.sequence_template1 = args.sequence_template1.upper()
 
             else:
                 raise ValueError(f"sequence template should be either a FASTA file, \
-                                 PDB file, or a amino acid sequence. Got: {args.sequence_template}")
+                                 PDB file, or a amino acid sequence. Got: {args.sequence_template1}")
+
+    if args.sequence_template2:
+        if os.path.isfile(args.sequence_template2):
+
+            if args.sequence_template2.endswith(('.fasta', '.fas', '.fa')):
+                fasta_dict = fasta2dict(args.sequence_template2)
+                args.sequence_template2 = next(iter(fasta_dict.values())).strip() 
+
+            elif args.sequence_template2.endswith(('.pdb')):
+                args.sequence_template2 = parsepdb(args.sequence_template2).sequence[0]
+
+            elif set(args.sequence_template2).issubset(set('ACDEFGHIKLMNPQRSTVWY')): 
+                args.sequence_template2 = args.sequence_template2.upper()
+
+            else:
+                raise ValueError(f"sequence template should be either a FASTA file, \
+                                 PDB file, or a amino acid sequence. Got: {args.sequence_template2}")
+
+
+
+
     return args
 
 

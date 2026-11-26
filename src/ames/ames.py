@@ -450,9 +450,9 @@ def extract_results(gen_i: int,
         ############################################################################
         #>>>>>>>>>>>>>>>>>>>>>>>>>> TEMPLATE SCORING TEST >>>>>>>>>>>>>>>>>>>>>>>>>> 
         ############################################################################
-        if args.structure_template1 and args.sequence_template:
+        if args.structure_template1 and args.sequence_template1:
 
-            SEQID_CUTOFF = 0.5
+            SEQID_CUTOFF = args.seq1_min_seqid
 
             try:
                 tmscore = tmalign(pdb_txt, args.structure_template1).tmscore
@@ -463,7 +463,7 @@ def extract_results(gen_i: int,
 
             tm_score = 1 - (0.35 if tmscore <= 0.35 else tmscore) 
 
-            sequence_identity = seqid(seq_data["seq1"]["sequence"], args.sequence_template)
+            sequence_identity = seqid(seq_data["seq1"]["sequence"], args.sequence_template1)
 
             if sequence_identity >= SEQID_CUTOFF:
                 seq_id = sequence_identity 
